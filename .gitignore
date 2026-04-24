@@ -1,89 +1,70 @@
-# Dependencies
+# Environment / secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+secrets.json
+service-account*.json
+gcp-key*.json
+config.local.*
+*.local
+
+# Node
 node_modules/
-.pnp
-.pnp.js
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-store/
+.yarn/cache/
+.yarn/install-state.gz
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env/
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Build outputs
 dist/
 build/
-out/
 .next/
+out/
 .nuxt/
-
-# Environment files
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.env*.local
-
-# Logs
-logs/
+.vite/
+.turbo/
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
-# Runtime data
-pids/
-*.pid
-*.seed
-*.pid.lock
-
-# Cache directories
-.cache/
-.parcel-cache/
-.npm/
-.eslintcache
-.stylelintcache
-*.tsbuildinfo
-
-# Testing
-coverage/
-.nyc_output/
-
-# IDEs and editors
+# OS / IDE
+.DS_Store
 .idea/
 .vscode/
+Thumbs.db
 *.swp
 *.swo
-*~
-*.sublime-workspace
-*.sublime-project
 
-# OS files
-.DS_Store
-.DS_Store?
-._*
-Thumbs.db
-ehthumbs.db
-Desktop.ini
+# Large data / uploads
+*.sqlite
+*.sqlite3
+*.db
+data/
+uploads/
+tmp/
+.cache/
 
-# TypeScript
-*.tsbuildinfo
-
-# Vite
-*.local
-
-# Optional npm cache directory
-.npm
-
-# Optional eslint cache
-.eslintcache
-
-# Yarn
-.yarn/cache
-.yarn/unplugged
-.yarn/build-state.yml
-.yarn/install-state.gz
-.pnp.*
-
-# Misc
-*.bak
-*.tmp
-*.temp
-.temp/
-.tmp/
+# Coverage
+coverage/
+.nyc_output/
+htmlcov/

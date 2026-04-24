@@ -8,8 +8,40 @@ CREATE TABLE IF NOT EXISTS users (
     full_name VARCHAR(255) NOT NULL,
     role VARCHAR(50) DEFAULT 'student',
     grade_level VARCHAR(50),
+    learning_style VARCHAR(100),
+    email_verified BOOLEAN DEFAULT false,
+    avatar_url VARCHAR(500),
+    bio TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Password Reset Tokens
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    token VARCHAR(255) NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    used BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Email Verification Tokens
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    token VARCHAR(255) NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    verified BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Token Blacklist (for logout)
+CREATE TABLE IF NOT EXISTS token_blacklist (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    token_hash VARCHAR(500) NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Learning Paths
@@ -51,6 +83,7 @@ CREATE TABLE IF NOT EXISTS study_materials (
 -- Quizzes
 CREATE TABLE IF NOT EXISTS quizzes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     description TEXT,
     subject VARCHAR(100) NOT NULL,
@@ -59,6 +92,7 @@ CREATE TABLE IF NOT EXISTS quizzes (
     time_limit_minutes INTEGER,
     passing_score INTEGER DEFAULT 70,
     is_adaptive BOOLEAN DEFAULT false,
+    is_ai_generated BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -116,11 +150,13 @@ CREATE TABLE IF NOT EXISTS problem_attempts (
 -- Flashcard Decks
 CREATE TABLE IF NOT EXISTS flashcard_decks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     description TEXT,
     subject VARCHAR(100) NOT NULL,
     topic VARCHAR(255),
     card_count INTEGER DEFAULT 0,
+    is_ai_generated BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -302,6 +338,198 @@ CREATE TABLE IF NOT EXISTS math_problems (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- ==================== NEW AI FEATURE TABLES ====================
+
+-- Learning Style Assessments
+CREATE TABLE IF NOT EXISTS learning_style_assessments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    visual_score INTEGER DEFAULT 0,
+    auditory_score INTEGER DEFAULT 0,
+    reading_writing_score INTEGER DEFAULT 0,
+    kinesthetic_score INTEGER DEFAULT 0,
+    dominant_style VARCHAR(100),
+    ai_analysis TEXT,
+    recommendations JSONB,
+    assessed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Learning Style Questions (for assessment quiz)
+CREATE TABLE IF NOT EXISTS learning_style_questions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    question_text TEXT NOT NULL,
+    options JSONB NOT NULL,
+    style_weights JSONB NOT NULL,
+    category VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Study Schedules
+CREATE TABLE IF NOT EXISTS study_schedules (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    schedule_data JSONB NOT NULL,
+    ai_optimized BOOLEAN DEFAULT false,
+    optimization_notes TEXT,
+    start_date DATE,
+    end_date DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Progress Predictions
+CREATE TABLE IF NOT EXISTS progress_predictions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    subject VARCHAR(100),
+    current_score DECIMAL(5,2),
+    predicted_score DECIMAL(5,2),
+    prediction_date DATE,
+    target_date DATE,
+    confidence_level DECIMAL(5,2),
+    ai_insights TEXT,
+    recommendations JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Concept Explanations (saved AI explanations)
+CREATE TABLE IF NOT EXISTS concept_explanations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    concept_name VARCHAR(255) NOT NULL,
+    subject VARCHAR(100) NOT NULL,
+    explanation TEXT NOT NULL,
+    difficulty_level VARCHAR(50),
+    examples JSONB,
+    analogies JSONB,
+    related_concepts JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Homework Assignments
+CREATE TABLE IF NOT EXISTS homework_assignments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    subject VARCHAR(100) NOT NULL,
+    description TEXT,
+    due_date DATE,
+    status VARCHAR(50) DEFAULT 'pending',
+    ai_help_content TEXT,
+    ai_hints JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Math Tutoring Sessions
+CREATE TABLE IF NOT EXISTS math_tutoring_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    topic VARCHAR(255) NOT NULL,
+    problem TEXT,
+    step_by_step_solution TEXT,
+    hints JSONB,
+    practice_problems JSONB,
+    session_notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Historical Events (for History Explorer)
+CREATE TABLE IF NOT EXISTS historical_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL,
+    event_date VARCHAR(100),
+    era VARCHAR(100),
+    region VARCHAR(100),
+    key_figures JSONB,
+    causes JSONB,
+    effects JSONB,
+    related_events JSONB,
+    image_url VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- History Explorations (user's exploration sessions)
+CREATE TABLE IF NOT EXISTS history_explorations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    event_id UUID REFERENCES historical_events(id) ON DELETE SET NULL,
+    query TEXT,
+    ai_response TEXT,
+    follow_up_questions JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Science Experiments (for Lab Simulator)
+CREATE TABLE IF NOT EXISTS science_experiments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL,
+    subject VARCHAR(100) NOT NULL,
+    topic VARCHAR(255),
+    difficulty_level VARCHAR(50),
+    materials JSONB,
+    procedure JSONB,
+    expected_results TEXT,
+    safety_notes TEXT,
+    virtual_simulation_data JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Lab Simulations (user's simulation runs)
+CREATE TABLE IF NOT EXISTS lab_simulations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    experiment_id UUID REFERENCES science_experiments(id) ON DELETE SET NULL,
+    user_inputs JSONB,
+    ai_results TEXT,
+    observations TEXT,
+    conclusions TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- AI Generated Content Log (for tracking AI-generated content)
+CREATE TABLE IF NOT EXISTS ai_generated_content (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    content_type VARCHAR(100) NOT NULL,
+    input_prompt TEXT,
+    generated_content TEXT NOT NULL,
+    model_used VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Writing Assistant Results
+CREATE TABLE IF NOT EXISTS writing_assistant_results (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    original_text TEXT NOT NULL,
+    improved_text TEXT NOT NULL,
+    improvement_type VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Ask AI Widget Queries
+CREATE TABLE IF NOT EXISTS ai_widget_queries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    context VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Math Solver Results
+CREATE TABLE IF NOT EXISTS math_solver_results (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    problem TEXT NOT NULL,
+    solution TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_learning_paths_subject ON learning_paths(subject);
@@ -312,3 +540,16 @@ CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_goals_user ON goals(user_id);
 CREATE INDEX IF NOT EXISTS idx_vocabulary_difficulty ON vocabulary_words(difficulty_level);
 CREATE INDEX IF NOT EXISTS idx_essays_user ON essays(user_id);
+CREATE INDEX IF NOT EXISTS idx_learning_style_user ON learning_style_assessments(user_id);
+CREATE INDEX IF NOT EXISTS idx_study_schedules_user ON study_schedules(user_id);
+CREATE INDEX IF NOT EXISTS idx_progress_predictions_user ON progress_predictions(user_id);
+CREATE INDEX IF NOT EXISTS idx_homework_user ON homework_assignments(user_id);
+CREATE INDEX IF NOT EXISTS idx_math_tutoring_user ON math_tutoring_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_historical_events_era ON historical_events(era);
+CREATE INDEX IF NOT EXISTS idx_science_experiments_subject ON science_experiments(subject);
+CREATE INDEX IF NOT EXISTS idx_writing_assistant_user ON writing_assistant_results(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_widget_queries_user ON ai_widget_queries(user_id);
+CREATE INDEX IF NOT EXISTS idx_math_solver_user ON math_solver_results(user_id);
+CREATE INDEX IF NOT EXISTS idx_password_reset_token ON password_reset_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_email_verify_token ON email_verification_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_token_blacklist_hash ON token_blacklist(token_hash);
