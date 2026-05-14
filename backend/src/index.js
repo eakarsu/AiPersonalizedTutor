@@ -6,11 +6,101 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const multer = require('multer');
 const { body, validationResult } = require('express-validator');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
+// Startup validation — fail fast on missing critical env vars
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET not set. Set it in your .env file before starting the server.');
+  process.exit(1);
+}
+
+// Resend email client (optional — gracefully degraded if key missing)
+let resendClient = null;
+try {
+  const { Resend } = require('resend');
+  if (process.env.RESEND_API_KEY) {
+    resendClient = new Resend(process.env.RESEND_API_KEY);
+  }
+} catch (e) {
+  console.warn('Resend not available:', e.message);
+}
+
 let PDFDocument;
 try { PDFDocument = require('pdfkit'); } catch (e) { PDFDocument = null; }
+
+// ==================== EMAIL HELPERS ====================
+
+async function sendPasswordResetEmail(email, token, resetUrl) {
+  if (!resendClient) {
+    console.warn('Resend not configured — password reset email not sent to', email);
+    return;
+  }
+  await resendClient.emails.send({
+    from: process.env.EMAIL_FROM || 'AI Tutor <noreply@aitutor.app>',
+    to: email,
+    subject: 'Reset your AI Tutor password',
+    html: `
+      <h2>Password Reset Request</h2>
+      <p>You requested a password reset for your AI Tutor account.</p>
+      <p>Click the link below to reset your password. This link expires in 1 hour.</p>
+      <p><a href="${resetUrl}" style="background:#4f46e5;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Reset Password</a></p>
+      <p>If you did not request this reset, you can safely ignore this email.</p>
+      <hr/>
+      <small>Token (for API use): ${token}</small>
+    `
+  });
+}
+
+async function sendEmailVerificationEmail(email, token, verifyUrl) {
+  if (!resendClient) {
+    console.warn('Resend not configured — verification email not sent to', email);
+    return;
+  }
+  await resendClient.emails.send({
+    from: process.env.EMAIL_FROM || 'AI Tutor <noreply@aitutor.app>',
+    to: email,
+    subject: 'Verify your AI Tutor email address',
+    html: `
+      <h2>Welcome to AI Tutor!</h2>
+      <p>Please verify your email address to activate your account.</p>
+      <p><a href="${verifyUrl}" style="background:#4f46e5;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Verify Email</a></p>
+      <p>This link expires in 24 hours.</p>
+      <hr/>
+      <small>Token (for API use): ${token}</small>
+    `
+  });
+}
+
+// ==================== PROMPT CONTEXT LIMITER ====================
+
+/**
+ * Truncate JSON-serialised data to stay within a safe prompt character budget.
+ * Returns the JSON string, trimmed to maxChars if needed.
+ */
+function limitContext(data, maxChars = 6000) {
+  const full = JSON.stringify(data);
+  if (full.length <= maxChars) return full;
+  // For arrays, slice until we fit; for other types just truncate the string.
+  if (Array.isArray(data)) {
+    let slice = data;
+    while (slice.length > 1) {
+      slice = slice.slice(0, Math.floor(slice.length * 0.75));
+      const candidate = JSON.stringify(slice);
+      if (candidate.length <= maxChars) {
+        return candidate + ` /* truncated — ${data.length - slice.length} items omitted */`;
+      }
+    }
+  }
+  return full.slice(0, maxChars) + '…';
+}
+
+// Multer — store uploads in memory (base64 or buffer), max 10 MB
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }
+});
 
 const pool = require('./config/database');
 
@@ -19,14 +109,66 @@ const PORT = process.env.BACKEND_PORT || 3001;
 
 // Middleware
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
-app.use(cors());
-app.use(express.json());
+
+// CORS allowlist — restrict to ALLOWED_ORIGINS env (comma-separated). Falls back to localhost dev.
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:5173')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);                   // server-to-server / curl
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+    return cb(new Error(`CORS: origin ${origin} not allowed`));
+  },
+  credentials: true,
+}));
+app.use(express.json({ limit: '10mb' }));
 
 // Rate limiting
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, message: { error: 'Too many auth requests, try again later' } });
 const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 200, message: { error: 'Too many requests, try again later' } });
+
+// Per-user AI rate limiter: 20 calls per hour, keyed by JWT user id (or IP fallback)
+const aiRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    if (req.user?.id) return `user:${req.user.id}`;
+    return req.ip || 'unknown';
+  },
+  message: { error: 'AI hourly limit reached (20/hour). Please wait before making more AI requests.' },
+});
 app.use('/api/auth/', authLimiter);
 app.use('/api/', generalLimiter);
+
+// Per-user AI rate limit registration is moved below `authenticateToken`
+// definition to avoid a temporal dead zone reference.
+const AI_PATH_PREFIXES = [
+  '/api/ai/',
+  '/api/essays/',                  // /:id/grade
+  '/api/writing-assistant/',
+  '/api/learning-style/ai-assess',
+  '/api/quiz-generator/generate',
+  '/api/progress-predictor/predict',
+  '/api/concept-explainer/explain',
+  '/api/study-schedule/optimize',
+  '/api/homework/quick-help',
+  '/api/homework/:id/help',
+  '/api/math-tutor/solve',
+  '/api/math-tutor/practice',
+  '/api/history-explorer/explore',
+  '/api/science-lab/simulate',
+  '/api/flashcard-generator/generate',
+  '/api/spaced-repetition/',
+  '/api/adaptive-quiz/',
+  '/api/parent-dashboard/',
+  '/api/voice-tutor/',
+  '/api/math-photo-solver',
+];
+// (registration done after authenticateToken is defined; see below)
 
 // Password validation helper
 const validatePassword = (password) => {
@@ -123,7 +265,7 @@ const authenticateToken = async (req, res, next) => {
     // If blacklist table doesn't exist yet, skip check
   }
 
-  jwt.verify(token, process.env.JWT_SECRET || 'secret', async (err, decoded) => {
+  jwt.verify(token, process.env.JWT_SECRET, async (err, decoded) => {
     if (err) return res.status(403).json({ error: 'Invalid token' });
     // Enrich with role from DB
     try {
@@ -134,6 +276,11 @@ const authenticateToken = async (req, res, next) => {
     next();
   });
 };
+
+// Now that authenticateToken is defined, register per-user AI rate limit on
+// known AI-heavy path prefixes. authenticateToken populates req.user; the
+// limiter then keys on req.user.id for accurate per-user throttling.
+AI_PATH_PREFIXES.forEach((p) => app.use(p, authenticateToken, aiRateLimiter));
 
 // OpenRouter AI Helper
 async function callOpenRouterAI(messages, systemPrompt = '') {
@@ -205,9 +352,20 @@ app.post('/api/auth/register', async (req, res) => {
       );
     } catch (e) {}
 
-    const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET || 'secret', { expiresIn: '24h' });
+    const appUrl = process.env.APP_URL || 'http://localhost:3000';
+    const verifyUrl = `${appUrl}/verify-email?token=${verifyToken}`;
+    try {
+      await sendEmailVerificationEmail(user.email, verifyToken, verifyUrl);
+    } catch (emailErr) {
+      console.error('Failed to send verification email:', emailErr.message);
+    }
 
-    res.json({ user, token, verificationToken: verifyToken });
+    const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '24h' });
+
+    // Return verificationToken in dev (when Resend not configured) so the user can verify manually
+    const regResponse = { user, token };
+    if (!resendClient) regResponse.verificationToken = verifyToken;
+    res.json(regResponse);
   } catch (error) {
     console.error('Registration error:', error);
     if (error.code === '23505') return res.status(409).json({ error: 'Email already registered' });
@@ -231,7 +389,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET || 'secret', { expiresIn: '24h' });
+    const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '24h' });
 
     res.json({
       user: {
@@ -279,8 +437,18 @@ app.post('/api/auth/forgot-password', async (req, res) => {
       [userResult.rows[0].id, resetToken]
     );
 
-    // In dev, return token directly
-    res.json({ message: 'If that email exists, a reset link has been sent', resetToken });
+    const appUrl = process.env.APP_URL || 'http://localhost:3000';
+    const resetUrl = `${appUrl}/reset-password?token=${resetToken}`;
+    try {
+      await sendPasswordResetEmail(email, resetToken, resetUrl);
+    } catch (emailErr) {
+      console.error('Failed to send password reset email:', emailErr.message);
+    }
+
+    // In dev without Resend, return token directly so it's still usable
+    const responsePayload = { message: 'If that email exists, a reset link has been sent' };
+    if (!resendClient) responsePayload.resetToken = resetToken;
+    res.json(responsePayload);
   } catch (error) {
     console.error('Forgot password error:', error);
     res.status(500).json({ error: 'Failed to process request' });
@@ -1485,6 +1653,138 @@ app.post('/api/ai/ask', authenticateToken, async (req, res) => {
   }
 });
 
+// ==================== AI LEARNING-STYLE CONTENT RECOMMENDATIONS ====================
+
+// POST /api/ai/learning-style-content-recommend
+// Body: { subject, topic?, difficulty?, content_kinds? }
+// Uses the user's most recent learning_style_results (or `dominant_style`/`scores`
+// passed in the body if no result exists) to recommend specific content items
+// (videos, articles, podcasts, hands-on exercises, quizzes) tailored to their
+// VARK style. Returns 503 when OPENROUTER_API_KEY is unset.
+app.post('/api/ai/learning-style-content-recommend', authenticateToken, async (req, res) => {
+  try {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey || apiKey === 'your_openrouter_api_key_here') {
+      return res.status(503).json({ error: 'AI not configured: OPENROUTER_API_KEY is missing' });
+    }
+
+    const { subject, topic, difficulty, content_kinds } = req.body || {};
+    if (!subject || !String(subject).trim()) {
+      return res.status(400).json({ error: 'subject is required' });
+    }
+
+    let scores = null;
+    let dominantStyle = (req.body && req.body.dominant_style) || null;
+
+    // Look up the user's most recent learning style result
+    try {
+      const lsRes = await pool.query(
+        'SELECT visual_score, auditory_score, reading_writing_score, kinesthetic_score, dominant_style FROM learning_style_results WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+        [req.user.id]
+      );
+      if (lsRes.rows.length > 0) {
+        const row = lsRes.rows[0];
+        scores = {
+          visual: row.visual_score,
+          auditory: row.auditory_score,
+          reading_writing: row.reading_writing_score,
+          kinesthetic: row.kinesthetic_score
+        };
+        dominantStyle = dominantStyle || row.dominant_style;
+      }
+    } catch (e) {
+      // table may not exist in some envs; continue with body-provided values
+    }
+
+    // Allow caller to provide scores directly (useful before the user has a stored result)
+    if (!scores && req.body && req.body.scores && typeof req.body.scores === 'object') {
+      scores = {
+        visual: Number(req.body.scores.visual) || 0,
+        auditory: Number(req.body.scores.auditory) || 0,
+        reading_writing: Number(req.body.scores.reading_writing) || 0,
+        kinesthetic: Number(req.body.scores.kinesthetic) || 0
+      };
+      if (!dominantStyle) {
+        dominantStyle = Object.entries(scores).reduce((a, b) => (a[1] > b[1] ? a : b))[0];
+      }
+    }
+
+    if (!dominantStyle) {
+      return res.status(400).json({
+        error: 'No learning style on file for this user. Take the assessment at /learning-style or include "dominant_style" / "scores" in the request body.'
+      });
+    }
+
+    const allowedKinds = ['video', 'article', 'podcast', 'hands_on', 'quiz', 'flashcards', 'interactive'];
+    const kinds = Array.isArray(content_kinds) && content_kinds.length > 0
+      ? content_kinds.filter(k => allowedKinds.includes(k))
+      : allowedKinds;
+
+    const systemPrompt = `You are a learning-content curator and instructional designer. Recommend specific, real-world content tailored to a student's VARK learning style. Return ONLY valid JSON in this shape:
+{
+  "subject": "...",
+  "topic": "...",
+  "dominant_style": "visual|auditory|reading_writing|kinesthetic",
+  "rationale": "<1-2 sentences on why these picks fit the style>",
+  "recommendations": [
+    {
+      "title": "...",
+      "kind": "video|article|podcast|hands_on|quiz|flashcards|interactive",
+      "why_it_fits_style": "...",
+      "estimated_time_minutes": <number>,
+      "difficulty": "beginner|intermediate|advanced",
+      "url_or_search_query": "<URL if you know it, otherwise a recommended search query>"
+    }
+  ],
+  "study_plan": [
+    { "step": <number>, "action": "...", "duration_minutes": <number> }
+  ]
+}
+Provide 6-8 recommendations. If kinds are restricted, only return those kinds.`;
+
+    const userPrompt = `Student profile:
+- Subject: ${subject}
+- Topic: ${topic || 'general'}
+- Difficulty: ${difficulty || 'mixed'}
+- Dominant VARK style: ${dominantStyle}
+- Style scores: ${scores ? JSON.stringify(scores) : 'unknown'}
+- Allowed content kinds: ${kinds.join(', ')}
+
+Recommend tailored learning content and a brief study plan.`;
+
+    const aiResponse = await callOpenRouterAI(
+      [{ role: 'user', content: userPrompt }],
+      systemPrompt
+    );
+
+    if (aiResponse.error) {
+      return res.status(502).json({ error: aiResponse.message || 'AI service error' });
+    }
+
+    let parsed = null;
+    try {
+      // strip markdown fences just in case
+      const cleaned = (aiResponse.content || '').replace(/^```(?:json)?\s*/g, '').replace(/```\s*$/g, '').trim();
+      parsed = JSON.parse(cleaned);
+    } catch (_e) {
+      // fall through; raw will be returned
+    }
+
+    res.json({
+      subject,
+      topic: topic || null,
+      dominant_style: dominantStyle,
+      scores,
+      content_kinds: kinds,
+      raw: aiResponse.content,
+      parsed
+    });
+  } catch (error) {
+    console.error('Error in /api/ai/learning-style-content-recommend:', error);
+    res.status(500).json({ error: 'Failed to generate content recommendations' });
+  }
+});
+
 // ==================== AI LEARNING STYLE DETECTOR ====================
 
 app.get('/api/learning-style/questions', async (req, res) => {
@@ -1530,8 +1830,9 @@ app.post('/api/learning-style/analyze', authenticateToken, async (req, res) => {
     const dominantStyle = Object.entries(scores).reduce((a, b) => a[1] > b[1] ? a : b)[0];
 
     // Get AI analysis
+    const answersContext = limitContext(answers, 3000);
     const aiResponse = await callOpenRouterAI(
-      [{ role: 'user', content: `Based on these learning style scores: Visual=${scores.visual}, Auditory=${scores.auditory}, Reading/Writing=${scores.reading_writing}, Kinesthetic=${scores.kinesthetic}. The dominant style is ${dominantStyle}. Provide a brief personalized analysis (2-3 paragraphs) with specific study recommendations for this learning style.` }],
+      [{ role: 'user', content: `Based on these learning style scores: Visual=${scores.visual}, Auditory=${scores.auditory}, Reading/Writing=${scores.reading_writing}, Kinesthetic=${scores.kinesthetic}. The dominant style is ${dominantStyle}. Answer data (truncated if large): ${answersContext}. Provide a brief personalized analysis (2-3 paragraphs) with specific study recommendations for this learning style.` }],
       `You are an educational psychologist specializing in the VARK learning styles framework (Visual, Auditory, Reading/Writing, Kinesthetic). Provide a rich, personalized analysis.
 
 **Your Analysis Should Include:**
@@ -1751,8 +2052,9 @@ app.post('/api/progress-predictor/predict', authenticateToken, async (req, res) 
     const currentScore = performance.rows.find(p => p.metric_type === 'quiz_score')?.avg_value || 0;
     const totalStudyMinutes = studyTime.rows[0]?.total_minutes || 0;
 
+    const perfSummary = limitContext(performance.rows, 3000);
     const aiResponse = await callOpenRouterAI(
-      [{ role: 'user', content: `Student's current ${subject} performance: Quiz average ${currentScore}%, Total study time: ${totalStudyMinutes} minutes. Target date: ${targetDate}. Predict their likely score by target date and provide specific recommendations to improve. Include confidence level (0-100%) in your prediction.` }],
+      [{ role: 'user', content: `Student's current ${subject} performance: Quiz average ${currentScore}%, Total study time: ${totalStudyMinutes} minutes. Performance breakdown: ${perfSummary}. Target date: ${targetDate}. Predict their likely score by target date and provide specific recommendations to improve. Include confidence level (0-100%) in your prediction.` }],
       `You are an educational data analyst and motivational learning coach. Provide data-driven predictions with an encouraging, forward-looking tone.
 
 **Your Analysis Should Include:**
@@ -1890,7 +2192,7 @@ app.post('/api/study-schedule/optimize', authenticateToken, async (req, res) => 
       GROUP BY subject
     `, [req.user.id, subjects]);
 
-    const performanceData = performance.rows.map(p => `${p.subject}: ${Math.round(p.avg_score)}%`).join(', ');
+    const performanceData = limitContext(performance.rows.map(p => `${p.subject}: ${Math.round(p.avg_score)}%`).join(', '), 2000);
 
     // Step 1: Get the schedule JSON from AI
     const scheduleResponse = await callOpenRouterAI(
@@ -2318,7 +2620,8 @@ app.post('/api/history-explorer/explore', authenticateToken, async (req, res) =>
       const event = await pool.query('SELECT * FROM historical_events WHERE id = $1', [eventId]);
       if (event.rows.length > 0) {
         const e = event.rows[0];
-        context = `Context: ${e.title} (${e.event_date}) - ${e.description}`;
+        const descSnippet = e.description ? e.description.substring(0, 1500) : '';
+        context = limitContext(`Context: ${e.title} (${e.event_date}) - ${descSnippet}`, 2000);
       }
     }
 
@@ -2424,8 +2727,8 @@ app.post('/api/science-lab/simulate', authenticateToken, async (req, res) => {
     const aiResponse = await callOpenRouterAI(
       [{ role: 'user', content: `Simulate this science experiment: "${exp.title}"
       Description: ${exp.description}
-      User's inputs/variables: ${JSON.stringify(userInputs)}
-      Expected results: ${exp.expected_results}
+      User's inputs/variables: ${limitContext(userInputs, 2000)}
+      Expected results: ${exp.expected_results ? exp.expected_results.substring(0, 1000) : ''}
 
       Provide a detailed simulation result including:
       1. What would happen step by step
@@ -2954,9 +3257,1064 @@ app.get('/api/goals/export/pdf', authenticateToken, pdfExportHandler('goals', 't
 app.get('/api/study-materials/export/pdf', authenticateToken, pdfExportHandler('study_materials', 'title', ['subject', 'topic', 'content']));
 app.get('/api/homework/export/pdf', authenticateToken, pdfExportHandler('homework_assignments', 'title', ['subject', 'description', 'due_date', 'status'], 'user_id'));
 
+// ==================== PHOTO-BASED MATH SOLVER ====================
+
+/**
+ * POST /api/math/solve-photo
+ * Accepts either:
+ *   - multipart/form-data with field "image" (file upload), OR
+ *   - application/json with field "imageBase64" (base64 string, optionally prefixed with data URI)
+ * Uses a vision-capable model to extract and solve each math problem in the image.
+ */
+app.post('/api/math/solve-photo', authenticateToken, upload.single('image'), async (req, res) => {
+  try {
+    let base64Image = null;
+    let mimeType = 'image/jpeg';
+
+    if (req.file) {
+      // Multipart upload
+      base64Image = req.file.buffer.toString('base64');
+      mimeType = req.file.mimetype || 'image/jpeg';
+    } else if (req.body && req.body.imageBase64) {
+      // JSON body with base64
+      const raw = req.body.imageBase64;
+      const dataUriMatch = raw.match(/^data:([^;]+);base64,(.+)$/);
+      if (dataUriMatch) {
+        mimeType = dataUriMatch[1];
+        base64Image = dataUriMatch[2];
+      } else {
+        base64Image = raw;
+      }
+    }
+
+    if (!base64Image) {
+      return res.status(400).json({ error: 'Provide an image via multipart "image" field or JSON "imageBase64" field' });
+    }
+
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey || apiKey === 'your_openrouter_api_key_here') {
+      return res.status(500).json({ error: 'OpenRouter API key not configured' });
+    }
+
+    // Use a vision-capable model
+    const visionModel = process.env.VISION_MODEL || 'anthropic/claude-3.5-sonnet';
+
+    const systemPrompt = 'You are a math tutor. Analyze this homework/worksheet image and solve each problem step-by-step. Show your work clearly.';
+    const userMessage = {
+      role: 'user',
+      content: [
+        {
+          type: 'image_url',
+          image_url: { url: `data:${mimeType};base64,${base64Image}` }
+        },
+        {
+          type: 'text',
+          text: 'Please identify every math problem visible in this image and solve each one step-by-step. Return your answer as a JSON object with key "problems" — an array where each element has: question (string), steps (array of strings), answer (string), explanation (string). Only return JSON, no surrounding text.'
+        }
+      ]
+    };
+
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'http://localhost:3000',
+        'X-Title': 'AI Personalized Tutor'
+      },
+      body: JSON.stringify({
+        model: visionModel,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          userMessage
+        ],
+        max_tokens: 4096
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.error) {
+      return res.status(500).json({ error: data.error.message || 'Vision AI error' });
+    }
+
+    let rawContent = data.choices[0].message.content || '';
+    // Strip code fences
+    rawContent = rawContent.replace(/^```(?:json)?\s*\n?/gm, '').replace(/\n?```\s*$/gm, '').trim();
+
+    let problems = [];
+    try {
+      const parsed = JSON.parse(rawContent);
+      problems = parsed.problems || parsed || [];
+    } catch (parseErr) {
+      // If JSON parsing fails, return the raw AI response wrapped in a single problem
+      problems = [{ question: 'Parsed from image', steps: [], answer: rawContent, explanation: '' }];
+    }
+
+    // Persist to math_tutoring_sessions
+    let sessionId = null;
+    try {
+      const sessionResult = await pool.query(
+        `INSERT INTO math_tutoring_sessions (user_id, topic, problem, step_by_step_solution)
+         VALUES ($1, $2, $3, $4) RETURNING id`,
+        [
+          req.user.id,
+          'Photo Math Solver',
+          `[Photo upload — ${problems.length} problem(s) detected]`,
+          JSON.stringify(problems)
+        ]
+      );
+      sessionId = sessionResult.rows[0].id;
+    } catch (dbErr) {
+      console.error('Error saving photo math session:', dbErr);
+    }
+
+    res.json({ problems, sessionId });
+  } catch (error) {
+    console.error('Error in /api/math/solve-photo:', error);
+    res.status(500).json({ error: 'Failed to process math photo' });
+  }
+});
+
+// ==================== SPACED REPETITION (SM-2) ====================
+
+/**
+ * Ensure the three SM-2 columns exist on user_flashcard_progress.
+ * Called once at startup — safe to run on every start (IF NOT EXISTS semantics).
+ */
+async function ensureSpacedRepetitionColumns() {
+  const alterStatements = [
+    `ALTER TABLE user_flashcard_progress ADD COLUMN IF NOT EXISTS next_review_date TIMESTAMP`,
+    `ALTER TABLE user_flashcard_progress ADD COLUMN IF NOT EXISTS ease_factor FLOAT DEFAULT 2.5`,
+    `ALTER TABLE user_flashcard_progress ADD COLUMN IF NOT EXISTS interval_days INTEGER DEFAULT 1`
+  ];
+  for (const sql of alterStatements) {
+    try {
+      await pool.query(sql);
+    } catch (e) {
+      // Column already exists or table missing — not fatal
+    }
+  }
+}
+ensureSpacedRepetitionColumns();
+
+/**
+ * SM-2 algorithm.
+ * @param {number} quality — 0..5 rating (0–2 = failed, 3–5 = passed)
+ * @param {number} currentEaseFactor
+ * @param {number} currentInterval — days
+ * @param {number} repetitions — how many times reviewed successfully in a row
+ * @returns {{ interval, easeFactor, repetitions, nextReviewDate }}
+ */
+function sm2(quality, currentEaseFactor = 2.5, currentInterval = 1, repetitions = 0) {
+  let interval;
+  let easeFactor = currentEaseFactor;
+  let reps = repetitions;
+
+  if (quality >= 3) {
+    // Correct response
+    if (reps === 0) {
+      interval = 1;
+    } else if (reps === 1) {
+      interval = 6;
+    } else {
+      interval = Math.round(currentInterval * easeFactor);
+    }
+    reps += 1;
+    easeFactor = Math.max(1.3, easeFactor + 0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
+  } else {
+    // Failed — reset
+    interval = 1;
+    reps = 0;
+    // ease factor stays the same on failure (some variants lower it; keeping simple)
+  }
+
+  const nextReviewDate = new Date();
+  nextReviewDate.setDate(nextReviewDate.getDate() + interval);
+
+  return { interval, easeFactor, repetitions: reps, nextReviewDate };
+}
+
+/**
+ * POST /api/flashcards/:id/review
+ * Body: { quality: 0-5 }
+ * Updates SM-2 state for the authenticated user's progress on this flashcard.
+ */
+app.post('/api/flashcards/:id/review', authenticateToken, async (req, res) => {
+  try {
+    const { quality } = req.body;
+    const flashcardId = req.params.id;
+
+    if (quality === undefined || quality === null || quality < 0 || quality > 5) {
+      return res.status(400).json({ error: 'quality must be a number between 0 and 5' });
+    }
+
+    // Upsert progress row if it doesn't exist yet
+    await pool.query(
+      `INSERT INTO user_flashcard_progress (user_id, flashcard_id, confidence_level, times_reviewed, last_reviewed_at, ease_factor, interval_days)
+       VALUES ($1, $2, 0, 0, NULL, 2.5, 1)
+       ON CONFLICT (user_id, flashcard_id) DO NOTHING`,
+      [req.user.id, flashcardId]
+    );
+
+    // Fetch current SM-2 state
+    const existing = await pool.query(
+      `SELECT ease_factor, interval_days, times_reviewed FROM user_flashcard_progress
+       WHERE user_id = $1 AND flashcard_id = $2`,
+      [req.user.id, flashcardId]
+    );
+
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: 'Flashcard not found' });
+    }
+
+    const row = existing.rows[0];
+    const currentEF = parseFloat(row.ease_factor) || 2.5;
+    const currentInterval = parseInt(row.interval_days) || 1;
+    const repetitions = quality >= 3 ? (parseInt(row.times_reviewed) || 0) : 0;
+
+    const { interval, easeFactor, nextReviewDate } = sm2(quality, currentEF, currentInterval, repetitions);
+
+    const updated = await pool.query(
+      `UPDATE user_flashcard_progress
+       SET confidence_level = $1,
+           times_reviewed = times_reviewed + 1,
+           last_reviewed_at = NOW(),
+           ease_factor = $2,
+           interval_days = $3,
+           next_review_date = $4
+       WHERE user_id = $5 AND flashcard_id = $6
+       RETURNING *`,
+      [Math.min(5, quality), easeFactor, interval, nextReviewDate, req.user.id, flashcardId]
+    );
+
+    res.json({
+      progress: updated.rows[0],
+      nextReviewDate,
+      intervalDays: interval,
+      easeFactor
+    });
+  } catch (error) {
+    console.error('Error in POST /api/flashcards/:id/review:', error);
+    res.status(500).json({ error: 'Failed to record flashcard review' });
+  }
+});
+
+/**
+ * GET /api/flashcards/due
+ * Returns flashcards due for review today (next_review_date <= NOW() or never reviewed).
+ */
+app.get('/api/flashcards/due', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT f.*, ufp.confidence_level, ufp.times_reviewed, ufp.last_reviewed_at,
+              ufp.ease_factor, ufp.interval_days, ufp.next_review_date,
+              fd.title as deck_title, fd.subject
+       FROM flashcards f
+       JOIN flashcard_decks fd ON f.deck_id = fd.id
+       LEFT JOIN user_flashcard_progress ufp ON ufp.flashcard_id = f.id AND ufp.user_id = $1
+       WHERE fd.user_id = $1
+         AND (ufp.next_review_date IS NULL OR ufp.next_review_date <= NOW())
+       ORDER BY COALESCE(ufp.next_review_date, '1970-01-01') ASC
+       LIMIT 50`,
+      [req.user.id]
+    );
+
+    res.json({
+      due: result.rows,
+      count: result.rows.length
+    });
+  } catch (error) {
+    console.error('Error in GET /api/flashcards/due:', error);
+    res.status(500).json({ error: 'Failed to fetch due flashcards' });
+  }
+});
+
+// ====================================================================
+// NEW FEATURE: Spaced Repetition (SM-2 algorithm) on flashcards
+// SM-2 reference: https://en.wikipedia.org/wiki/SuperMemo
+// ====================================================================
+
+/**
+ * Apply one SM-2 update step to a card given a quality grade (0..5).
+ * 0/1/2 = wrong → reset; 3-5 = right.
+ * Returns { repetitions, intervalDays, easeFactor }
+ */
+function sm2Step({ repetitions, intervalDays, easeFactor }, quality) {
+  const q = Math.max(0, Math.min(5, Math.round(quality)));
+  let ef = easeFactor + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02));
+  if (ef < 1.3) ef = 1.3;
+
+  let reps = repetitions;
+  let interval = intervalDays;
+  if (q < 3) {
+    reps = 0;
+    interval = 1;
+  } else {
+    reps += 1;
+    if (reps === 1) interval = 1;
+    else if (reps === 2) interval = 6;
+    else interval = Math.round(intervalDays * ef);
+  }
+  return { repetitions: reps, intervalDays: interval, easeFactor: ef };
+}
+
+// GET /api/spaced-repetition/due — flashcards due now for the user
+app.get('/api/spaced-repetition/due', authenticateToken, async (req, res) => {
+  try {
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 30));
+    const result = await pool.query(
+      `SELECT f.id AS flashcard_id, f.front_text, f.back_text, fd.title AS deck_title,
+              s.repetitions, s.interval_days, s.ease_factor, s.next_review_at, s.last_quality
+         FROM flashcards f
+         JOIN flashcard_decks fd ON fd.id = f.deck_id
+         LEFT JOIN sr_card_state s ON s.flashcard_id = f.id AND s.user_id = $1
+         WHERE fd.user_id = $1
+           AND (s.next_review_at IS NULL OR s.next_review_at <= NOW())
+         ORDER BY COALESCE(s.next_review_at, '1970-01-01'::timestamp) ASC
+         LIMIT $2`,
+      [req.user.id, limit]
+    );
+    res.json({ due: result.rows, count: result.rows.length });
+  } catch (e) {
+    console.error('SR due error:', e);
+    res.status(500).json({ error: 'Failed to fetch due cards' });
+  }
+});
+
+// POST /api/spaced-repetition/review — submit a quality grade for a card
+app.post(
+  '/api/spaced-repetition/review',
+  authenticateToken,
+  body('flashcardId').isUUID().withMessage('flashcardId must be a UUID'),
+  body('quality').isInt({ min: 0, max: 5 }).withMessage('quality must be 0..5'),
+  validate,
+  async (req, res) => {
+    try {
+      const { flashcardId, quality } = req.body;
+      // Verify the card belongs to a deck owned by the user
+      const own = await pool.query(
+        `SELECT f.id FROM flashcards f
+           JOIN flashcard_decks fd ON fd.id = f.deck_id
+          WHERE f.id = $1 AND fd.user_id = $2`,
+        [flashcardId, req.user.id]
+      );
+      if (own.rows.length === 0) return res.status(404).json({ error: 'Card not found' });
+
+      const cur = await pool.query(
+        `SELECT repetitions, interval_days, ease_factor
+           FROM sr_card_state WHERE user_id = $1 AND flashcard_id = $2`,
+        [req.user.id, flashcardId]
+      );
+      const state = cur.rows[0] || { repetitions: 0, interval_days: 1, ease_factor: 2.5 };
+      const next = sm2Step(
+        {
+          repetitions: state.repetitions,
+          intervalDays: state.interval_days,
+          easeFactor: parseFloat(state.ease_factor),
+        },
+        quality
+      );
+      const nextReview = new Date(Date.now() + next.intervalDays * 24 * 60 * 60 * 1000);
+
+      const upserted = await pool.query(
+        `INSERT INTO sr_card_state (user_id, flashcard_id, repetitions, interval_days,
+                                    ease_factor, next_review_at, last_reviewed_at, last_quality)
+           VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)
+         ON CONFLICT (user_id, flashcard_id) DO UPDATE
+           SET repetitions = EXCLUDED.repetitions,
+               interval_days = EXCLUDED.interval_days,
+               ease_factor = EXCLUDED.ease_factor,
+               next_review_at = EXCLUDED.next_review_at,
+               last_reviewed_at = NOW(),
+               last_quality = EXCLUDED.last_quality
+         RETURNING *`,
+        [req.user.id, flashcardId, next.repetitions, next.intervalDays, next.easeFactor, nextReview, quality]
+      );
+      res.json({ state: upserted.rows[0] });
+    } catch (e) {
+      console.error('SR review error:', e);
+      res.status(500).json({ error: 'Failed to record review' });
+    }
+  }
+);
+
+// GET /api/spaced-repetition/stats — aggregate stats for the user
+app.get('/api/spaced-repetition/stats', authenticateToken, async (req, res) => {
+  try {
+    const stats = await pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE next_review_at <= NOW()) AS due_now,
+         COUNT(*) FILTER (WHERE next_review_at BETWEEN NOW() AND NOW() + INTERVAL '24 hours') AS due_24h,
+         COUNT(*) AS total_cards,
+         AVG(ease_factor)::float AS avg_ease
+         FROM sr_card_state WHERE user_id = $1`,
+      [req.user.id]
+    );
+    res.json(stats.rows[0]);
+  } catch (e) {
+    console.error('SR stats error:', e);
+    res.status(500).json({ error: 'Failed to fetch SR stats' });
+  }
+});
+
+// ====================================================================
+// NEW FEATURE: Adaptive Quiz — difficulty scales to per-topic confidence
+// ====================================================================
+function difficultyForConfidence(c) {
+  if (c < 35) return 'easy';
+  if (c < 70) return 'medium';
+  return 'hard';
+}
+
+// POST /api/adaptive-quiz/next — generate the next question one notch up/down
+app.post(
+  '/api/adaptive-quiz/next',
+  authenticateToken,
+  body('subject').notEmpty(),
+  body('topic').notEmpty(),
+  validate,
+  async (req, res) => {
+    try {
+      const { subject, topic } = req.body;
+      const cur = await pool.query(
+        `SELECT confidence FROM topic_confidence WHERE user_id = $1 AND subject = $2 AND topic = $3`,
+        [req.user.id, subject, topic]
+      );
+      const confidence = cur.rows[0]?.confidence ?? 50;
+      const difficulty = difficultyForConfidence(parseFloat(confidence));
+
+      const aiRaw = await callOpenRouterAI(
+        [
+          {
+            role: 'user',
+            content: `Generate ONE multiple-choice question on subject "${subject}", topic "${topic}", at difficulty "${difficulty}". Return JSON: { "questionText": string, "options": ["A","B","C","D"], "correctAnswer": "A|B|C|D", "explanation": string }. Output raw JSON only.`,
+          },
+        ],
+        'You are an expert tutor crafting adaptive quiz questions.'
+      );
+      if (aiRaw.error) return res.status(500).json({ error: aiRaw.message });
+      let parsed;
+      try { parsed = JSON.parse(aiRaw.content); } catch { parsed = null; }
+      if (!parsed) return res.status(500).json({ error: 'AI returned malformed JSON' });
+
+      const inserted = await pool.query(
+        `INSERT INTO adaptive_quiz_questions (user_id, subject, topic, difficulty,
+            question_text, options, correct_answer, explanation, ai_results)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [
+          req.user.id,
+          subject,
+          topic,
+          difficulty,
+          parsed.questionText,
+          JSON.stringify(parsed.options || []),
+          parsed.correctAnswer,
+          parsed.explanation || '',
+          JSON.stringify({ raw: aiRaw.content }),
+        ]
+      );
+      res.json({ question: inserted.rows[0], confidence: parseFloat(confidence), difficulty });
+    } catch (e) {
+      console.error('Adaptive next error:', e);
+      res.status(500).json({ error: 'Failed to generate adaptive question' });
+    }
+  }
+);
+
+// POST /api/adaptive-quiz/answer — submit answer; updates topic_confidence with EMA
+app.post(
+  '/api/adaptive-quiz/answer',
+  authenticateToken,
+  body('questionId').isUUID(),
+  body('userAnswer').notEmpty(),
+  validate,
+  async (req, res) => {
+    try {
+      const { questionId, userAnswer } = req.body;
+      const q = await pool.query(
+        `SELECT * FROM adaptive_quiz_questions WHERE id = $1 AND user_id = $2`,
+        [questionId, req.user.id]
+      );
+      if (q.rows.length === 0) return res.status(404).json({ error: 'Question not found' });
+      const row = q.rows[0];
+      const isCorrect = String(row.correct_answer).trim().toLowerCase() === String(userAnswer).trim().toLowerCase();
+
+      // EMA: new = old + alpha * (target - old). target = 100 if correct, 0 if not.
+      const alpha = 0.25;
+      const upserted = await pool.query(
+        `INSERT INTO topic_confidence (user_id, subject, topic, confidence, correct_count,
+                                        incorrect_count, last_difficulty, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+         ON CONFLICT (user_id, subject, topic) DO UPDATE SET
+           confidence = topic_confidence.confidence + $8 * ($9 - topic_confidence.confidence),
+           correct_count = topic_confidence.correct_count + CASE WHEN $10 THEN 1 ELSE 0 END,
+           incorrect_count = topic_confidence.incorrect_count + CASE WHEN $10 THEN 0 ELSE 1 END,
+           last_difficulty = $7,
+           updated_at = NOW()
+         RETURNING *`,
+        [
+          req.user.id,
+          row.subject,
+          row.topic,
+          isCorrect ? 65 : 35,
+          isCorrect ? 1 : 0,
+          isCorrect ? 0 : 1,
+          row.difficulty,
+          alpha,
+          isCorrect ? 100 : 0,
+          isCorrect,
+        ]
+      );
+      res.json({
+        correct: isCorrect,
+        explanation: row.explanation,
+        confidence: parseFloat(upserted.rows[0].confidence),
+      });
+    } catch (e) {
+      console.error('Adaptive answer error:', e);
+      res.status(500).json({ error: 'Failed to record answer' });
+    }
+  }
+);
+
+// GET /api/adaptive-quiz/confidence — paginated topic confidence list
+app.get('/api/adaptive-quiz/confidence', authenticateToken, async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const offset = (page - 1) * limit;
+    const [rows, count] = await Promise.all([
+      pool.query(
+        `SELECT * FROM topic_confidence WHERE user_id = $1
+          ORDER BY updated_at DESC LIMIT $2 OFFSET $3`,
+        [req.user.id, limit, offset]
+      ),
+      pool.query(`SELECT COUNT(*) FROM topic_confidence WHERE user_id = $1`, [req.user.id]),
+    ]);
+    const total = parseInt(count.rows[0].count);
+    res.json({
+      data: rows.rows,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch confidence list' });
+  }
+});
+
+// ====================================================================
+// NEW FEATURE: Parent / Teacher Dashboard
+// ====================================================================
+
+// POST /api/parent-dashboard/link — link guardian to a student by email
+app.post(
+  '/api/parent-dashboard/link',
+  authenticateToken,
+  body('studentEmail').isEmail(),
+  body('relationship').isIn(['parent', 'teacher', 'tutor']),
+  validate,
+  async (req, res) => {
+    try {
+      const { studentEmail, relationship } = req.body;
+      const student = await pool.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [studentEmail]);
+      if (student.rows.length === 0) return res.status(404).json({ error: 'Student not found' });
+      if (student.rows[0].id === req.user.id) return res.status(400).json({ error: 'Cannot link yourself' });
+      const link = await pool.query(
+        `INSERT INTO guardian_links (guardian_user_id, student_user_id, relationship)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (guardian_user_id, student_user_id) DO UPDATE SET relationship = EXCLUDED.relationship
+         RETURNING *`,
+        [req.user.id, student.rows[0].id, relationship]
+      );
+      res.json({ link: link.rows[0] });
+    } catch (e) {
+      console.error('Link guardian error:', e);
+      res.status(500).json({ error: 'Failed to link student' });
+    }
+  }
+);
+
+// GET /api/parent-dashboard/students — list students linked to the current guardian
+app.get('/api/parent-dashboard/students', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT u.id, u.email, u.full_name, u.grade_level, gl.relationship, gl.created_at AS linked_at
+         FROM guardian_links gl
+         JOIN users u ON u.id = gl.student_user_id
+         WHERE gl.guardian_user_id = $1
+         ORDER BY u.full_name`,
+      [req.user.id]
+    );
+    res.json({ students: result.rows });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch students' });
+  }
+});
+
+// GET /api/parent-dashboard/student/:id/summary — read-only progress summary for a student
+app.get('/api/parent-dashboard/student/:id/summary', authenticateToken, async (req, res) => {
+  try {
+    const link = await pool.query(
+      `SELECT 1 FROM guardian_links WHERE guardian_user_id = $1 AND student_user_id = $2`,
+      [req.user.id, req.params.id]
+    );
+    if (link.rows.length === 0) return res.status(403).json({ error: 'Not linked to this student' });
+
+    const studentId = req.params.id;
+    const [quizzes, sessions, essays, sr] = await Promise.all([
+      pool.query(
+        `SELECT COUNT(*) AS attempts, AVG(score)::float AS avg_score
+           FROM quiz_attempts WHERE user_id = $1 AND completed_at >= NOW() - INTERVAL '30 days'`,
+        [studentId]
+      ),
+      pool.query(
+        `SELECT COALESCE(SUM(duration_minutes), 0)::int AS minutes_30d
+           FROM study_sessions WHERE user_id = $1 AND started_at >= NOW() - INTERVAL '30 days'`,
+        [studentId]
+      ),
+      pool.query(
+        `SELECT COUNT(*) AS essays_30d, AVG(ai_score)::float AS avg_essay_score
+           FROM essays WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '30 days'`,
+        [studentId]
+      ),
+      pool.query(
+        `SELECT COUNT(*) AS due, AVG(ease_factor)::float AS avg_ease
+           FROM sr_card_state WHERE user_id = $1`,
+        [studentId]
+      ),
+    ]);
+
+    res.json({
+      quizzes: quizzes.rows[0],
+      study: sessions.rows[0],
+      essays: essays.rows[0],
+      spacedRepetition: sr.rows[0],
+    });
+  } catch (e) {
+    console.error('Student summary error:', e);
+    res.status(500).json({ error: 'Failed to fetch summary' });
+  }
+});
+
+// POST /api/parent-dashboard/student/:id/weekly-letter — AI-generated weekly progress letter
+app.post('/api/parent-dashboard/student/:id/weekly-letter', authenticateToken, async (req, res) => {
+  try {
+    const link = await pool.query(
+      `SELECT 1 FROM guardian_links WHERE guardian_user_id = $1 AND student_user_id = $2`,
+      [req.user.id, req.params.id]
+    );
+    if (link.rows.length === 0) return res.status(403).json({ error: 'Not linked to this student' });
+
+    const studentId = req.params.id;
+    // Compute week range (Mon..Sun) for "previous full week"
+    const now = new Date();
+    const day = now.getDay() || 7;       // Mon=1..Sun=7
+    const weekEnd = new Date(now);
+    weekEnd.setDate(now.getDate() - day);
+    weekEnd.setHours(23, 59, 59, 999);
+    const weekStart = new Date(weekEnd);
+    weekStart.setDate(weekEnd.getDate() - 6);
+    weekStart.setHours(0, 0, 0, 0);
+
+    const metrics = await pool.query(
+      `SELECT
+         (SELECT COUNT(*)::int FROM quiz_attempts WHERE user_id = $1 AND completed_at BETWEEN $2 AND $3) AS quizzes,
+         (SELECT COALESCE(AVG(score),0)::float FROM quiz_attempts WHERE user_id = $1 AND completed_at BETWEEN $2 AND $3) AS avg_quiz,
+         (SELECT COALESCE(SUM(duration_minutes),0)::int FROM study_sessions WHERE user_id = $1 AND started_at BETWEEN $2 AND $3) AS minutes,
+         (SELECT COUNT(*)::int FROM essays WHERE user_id = $1 AND created_at BETWEEN $2 AND $3) AS essays`,
+      [studentId, weekStart, weekEnd]
+    );
+    const m = metrics.rows[0];
+    const studentRow = await pool.query('SELECT full_name FROM users WHERE id = $1', [studentId]);
+    const studentName = studentRow.rows[0]?.full_name || 'the student';
+
+    const aiRaw = await callOpenRouterAI(
+      [
+        {
+          role: 'user',
+          content: `Write a warm, parent-friendly weekly progress letter for ${studentName} covering the week
+of ${weekStart.toDateString()} – ${weekEnd.toDateString()}.
+
+Metrics:
+- Quizzes taken: ${m.quizzes}
+- Average quiz score: ${m.avg_quiz?.toFixed(1) || '0'}
+- Study minutes: ${m.minutes}
+- Essays submitted: ${m.essays}
+
+Return HTML only (no preamble) — 3 short paragraphs: highlights, areas to grow, suggestion for next week.`,
+        },
+      ],
+      'You write supportive, specific weekly progress letters for parents and teachers.'
+    );
+    if (aiRaw.error) return res.status(500).json({ error: aiRaw.message });
+
+    const stored = await pool.query(
+      `INSERT INTO progress_letters (student_user_id, week_start, week_end, letter_html, metrics, ai_results)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (student_user_id, week_start) DO UPDATE SET
+         letter_html = EXCLUDED.letter_html,
+         metrics = EXCLUDED.metrics,
+         ai_results = EXCLUDED.ai_results
+       RETURNING *`,
+      [studentId, weekStart, weekEnd, aiRaw.content, JSON.stringify(m), JSON.stringify({ raw: aiRaw.content })]
+    );
+    res.json({ letter: stored.rows[0] });
+  } catch (e) {
+    console.error('Weekly letter error:', e);
+    res.status(500).json({ error: 'Failed to generate weekly letter' });
+  }
+});
+
+// ====================================================================
+// NEW FEATURE: SSE Streaming chat — /api/ai/stream-chat
+// ====================================================================
+app.post('/api/ai/stream-chat', authenticateToken, async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+
+  const sseWrite = (event, data) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  try {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey || apiKey === 'your_openrouter_api_key_here') {
+      sseWrite('error', { error: 'OpenRouter API key not configured' });
+      return res.end();
+    }
+    const { messages, systemPrompt } = req.body;
+    if (!Array.isArray(messages)) {
+      sseWrite('error', { error: 'messages array required' });
+      return res.end();
+    }
+
+    const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'http://localhost:3000',
+        'X-Title': 'AI Personalized Tutor',
+      },
+      body: JSON.stringify({
+        model: process.env.OPENROUTER_MODEL || 'anthropic/claude-haiku-4.5',
+        stream: true,
+        messages: [
+          { role: 'system', content: systemPrompt || 'You are a helpful AI tutor.' },
+          ...messages,
+        ],
+      }),
+    });
+
+    if (!upstream.ok || !upstream.body) {
+      const text = await upstream.text().catch(() => '');
+      sseWrite('error', { error: `Upstream error ${upstream.status}: ${text.slice(0, 200)}` });
+      return res.end();
+    }
+
+    const reader = upstream.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t.startsWith('data:')) continue;
+        const data = t.slice(5).trim();
+        if (data === '[DONE]') break;
+        try {
+          const j = JSON.parse(data);
+          const tk = j?.choices?.[0]?.delta?.content || '';
+          if (tk) sseWrite('token', { token: tk });
+        } catch {}
+      }
+    }
+    sseWrite('done', {});
+    res.end();
+  } catch (e) {
+    console.error('stream-chat error:', e);
+    try { res.write(`event: error\ndata: ${JSON.stringify({ error: 'Streaming failed' })}\n\n`); } catch {}
+    res.end();
+  }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Version endpoint
+app.get('/api/version', (req, res) => {
+  res.json({
+    name: 'ai-tutor-backend',
+    version: process.env.npm_package_version || '1.0.0',
+    node: process.version,
+    uptimeSec: Math.round(process.uptime()),
+  });
+});
+
+// =============================================================================
+// Apply pass 5 — deferred-backlog endpoints.
+//
+// All additive. Existing routes/schemas untouched. New tables use
+// CREATE TABLE IF NOT EXISTS. AI/integration stubs return 503 +
+// `missing: <ENV>` when their gating env vars are unset.
+//
+// Categories:
+//  - NEEDS-PRODUCT-DECISION:
+//      Parent dashboard scope (`/api/parent/insights`):
+//        PRODUCT-DECISION default scope = "summary": last 7d activity, recent
+//        quiz scores, last-active timestamp. No raw transcripts (privacy).
+//      Voice tutor (`/api/ai/voice/session-start`):
+//        PRODUCT-DECISION default = WebRTC offer placeholder; real provider
+//        gated on `VOICE_PROVIDER` (deepgram | elevenlabs | openai-realtime).
+//  - NEEDS-CREDS:
+//      LMS Canvas: CANVAS_API_TOKEN, CANVAS_BASE_URL
+//      LMS Schoology: SCHOOLOGY_CONSUMER_KEY, SCHOOLOGY_CONSUMER_SECRET
+//      Mobile push APNS: APNS_KEY_ID, APNS_TEAM_ID, APNS_PRIVATE_KEY
+//      Mobile push FCM:  FCM_SERVER_KEY
+//  - MECHANICAL:
+//      `/api/ai/study-plan-week` — generates a week-long study plan from
+//      the user's goals + recent quiz history (returns 503 without API key).
+// =============================================================================
+
+(async function ensureBacklogTables() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS parent_links (
+        id SERIAL PRIMARY KEY,
+        parent_user_id INTEGER NOT NULL,
+        student_user_id INTEGER NOT NULL,
+        relationship VARCHAR(40) DEFAULT 'guardian',
+        scope VARCHAR(40) DEFAULT 'summary',
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (parent_user_id, student_user_id)
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS voice_sessions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        provider VARCHAR(40),
+        status VARCHAR(20) DEFAULT 'pending',
+        room_token TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS lms_links (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        provider VARCHAR(40) NOT NULL,
+        external_user_id VARCHAR(160),
+        access_token TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (user_id, provider)
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS push_devices (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        platform VARCHAR(20) NOT NULL,
+        token TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (token)
+      )
+    `);
+  } catch (e) {
+    console.warn('[apply5] backlog table init skipped:', e.message);
+  }
+})();
+
+// --- NEEDS-PRODUCT-DECISION: Parent dashboard insights ---
+// Default scope = "summary" (no transcripts). To expand scope we'd add a
+// scope=full mode with explicit consent flow.
+app.post('/api/parent/link', authenticateToken, async (req, res) => {
+  try {
+    const { student_user_id, relationship = 'guardian', scope = 'summary' } = req.body || {};
+    if (!student_user_id) return res.status(400).json({ error: 'student_user_id required' });
+    const r = await pool.query(
+      `INSERT INTO parent_links (parent_user_id, student_user_id, relationship, scope)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (parent_user_id, student_user_id) DO UPDATE
+         SET relationship = EXCLUDED.relationship, scope = EXCLUDED.scope
+       RETURNING *`,
+      [req.user.id, student_user_id, relationship, scope]
+    );
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/parent/insights', authenticateToken, async (req, res) => {
+  try {
+    const linksRes = await pool.query(
+      `SELECT student_user_id, scope FROM parent_links WHERE parent_user_id = $1`,
+      [req.user.id]
+    );
+    if (!linksRes.rows.length) {
+      return res.json({ children: [], note: 'No linked students. POST /api/parent/link first.' });
+    }
+    const out = [];
+    for (const link of linksRes.rows) {
+      const studentId = link.student_user_id;
+      let recentQuizzes = { rows: [] };
+      let lastActive = null;
+      try {
+        recentQuizzes = await pool.query(
+          `SELECT id, score, total_questions, completed_at
+             FROM quiz_attempts
+            WHERE user_id = $1 AND completed_at IS NOT NULL
+            ORDER BY completed_at DESC LIMIT 5`,
+          [studentId]
+        );
+      } catch (e) { /* table may differ */ }
+      try {
+        const la = await pool.query(
+          `SELECT MAX(completed_at) AS last_active FROM quiz_attempts WHERE user_id = $1`,
+          [studentId]
+        );
+        lastActive = la.rows[0]?.last_active || null;
+      } catch (e) {}
+      out.push({
+        student_user_id: studentId,
+        scope: link.scope,
+        last_active: lastActive,
+        recent_quizzes: recentQuizzes.rows,
+      });
+    }
+    res.json({ children: out, scope_default: 'summary' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- NEEDS-CREDS: LMS Canvas/Schoology link ---
+app.post('/api/lms/canvas/link', authenticateToken, async (req, res) => {
+  const missing = [];
+  if (!process.env.CANVAS_API_TOKEN) missing.push('CANVAS_API_TOKEN');
+  if (!process.env.CANVAS_BASE_URL) missing.push('CANVAS_BASE_URL');
+  if (missing.length) {
+    return res.status(503).json({ error: 'Canvas LMS not configured', missing, provider: 'canvas' });
+  }
+  res.status(503).json({ error: 'Canvas LMS adapter not yet implemented', provider: 'canvas' });
+});
+
+app.post('/api/lms/schoology/link', authenticateToken, async (req, res) => {
+  const missing = [];
+  if (!process.env.SCHOOLOGY_CONSUMER_KEY) missing.push('SCHOOLOGY_CONSUMER_KEY');
+  if (!process.env.SCHOOLOGY_CONSUMER_SECRET) missing.push('SCHOOLOGY_CONSUMER_SECRET');
+  if (missing.length) {
+    return res.status(503).json({ error: 'Schoology LMS not configured', missing, provider: 'schoology' });
+  }
+  res.status(503).json({ error: 'Schoology LMS adapter not yet implemented', provider: 'schoology' });
+});
+
+// --- NEEDS-CREDS: Mobile push registration + dispatch ---
+app.post('/api/push/register', authenticateToken, async (req, res) => {
+  try {
+    const { platform, token } = req.body || {};
+    if (!platform || !token) return res.status(400).json({ error: 'platform, token required' });
+    await pool.query(
+      `INSERT INTO push_devices (user_id, platform, token)
+       VALUES ($1,$2,$3) ON CONFLICT (token) DO UPDATE SET user_id = EXCLUDED.user_id`,
+      [req.user.id, platform, token]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/push/notify', authenticateToken, async (req, res) => {
+  const provider = process.env.PUSH_PROVIDER;
+  const missing = [];
+  if (!provider) missing.push('PUSH_PROVIDER');
+  if (provider === 'apns') {
+    if (!process.env.APNS_KEY_ID) missing.push('APNS_KEY_ID');
+    if (!process.env.APNS_TEAM_ID) missing.push('APNS_TEAM_ID');
+    if (!process.env.APNS_PRIVATE_KEY) missing.push('APNS_PRIVATE_KEY');
+  } else if (provider === 'fcm') {
+    if (!process.env.FCM_SERVER_KEY) missing.push('FCM_SERVER_KEY');
+  }
+  if (missing.length) {
+    return res.status(503).json({ error: 'Push not configured', missing, provider: provider || 'unset' });
+  }
+  res.status(503).json({ error: 'Push dispatcher not yet implemented', provider });
+});
+
+// --- NEEDS-PRODUCT-DECISION: Voice tutor session start ---
+// PRODUCT-DECISION: gate real voice provider on VOICE_PROVIDER. Without it,
+// return a placeholder room token so the FE can render the UI shell.
+app.post('/api/ai/voice/session-start', authenticateToken, async (req, res) => {
+  const provider = process.env.VOICE_PROVIDER;
+  if (!provider) {
+    return res.status(503).json({
+      error: 'Voice tutor not configured',
+      missing: ['VOICE_PROVIDER'],
+      supported: ['deepgram', 'elevenlabs', 'openai-realtime'],
+    });
+  }
+  if (provider === 'deepgram' && !process.env.DEEPGRAM_API_KEY) {
+    return res.status(503).json({ error: 'DEEPGRAM_API_KEY missing', missing: ['DEEPGRAM_API_KEY'], provider });
+  }
+  if (provider === 'elevenlabs' && !process.env.ELEVENLABS_API_KEY) {
+    return res.status(503).json({ error: 'ELEVENLABS_API_KEY missing', missing: ['ELEVENLABS_API_KEY'], provider });
+  }
+  if (provider === 'openai-realtime' && !process.env.OPENAI_API_KEY) {
+    return res.status(503).json({ error: 'OPENAI_API_KEY missing', missing: ['OPENAI_API_KEY'], provider });
+  }
+  try {
+    const r = await pool.query(
+      `INSERT INTO voice_sessions (user_id, provider, status, room_token)
+       VALUES ($1,$2,'pending',$3) RETURNING id, provider, status`,
+      [req.user.id, provider, 'placeholder-' + Date.now()]
+    );
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- MECHANICAL: weekly study plan via existing AI helper ---
+app.post('/api/ai/study-plan-week', authenticateToken, async (req, res) => {
+  if (!process.env.OPENROUTER_API_KEY) {
+    return res.status(503).json({ error: 'AI not configured: OPENROUTER_API_KEY is missing', missing: ['OPENROUTER_API_KEY'] });
+  }
+  try {
+    const { subject = 'general', goal_minutes_per_day = 30, focus_areas = [] } = req.body || {};
+    let recentQuizzes = { rows: [] };
+    try {
+      recentQuizzes = await pool.query(
+        `SELECT subject, score, total_questions, completed_at FROM quiz_attempts
+          WHERE user_id = $1 AND completed_at IS NOT NULL
+          ORDER BY completed_at DESC LIMIT 10`,
+        [req.user.id]
+      );
+    } catch (e) { /* schema may differ */ }
+    const prompt = `Build a 7-day study plan for subject "${subject}". Daily budget ${goal_minutes_per_day} min.
+Recent quizzes: ${JSON.stringify(recentQuizzes.rows)}.
+Focus: ${focus_areas.join(', ') || 'auto'}.
+Return STRICT JSON: {"plan":[{"day":"Mon","minutes":30,"topics":[],"resources":[]}],"weekly_goal":"..."}`;
+    const aiResponse = await callOpenRouterAI([{ role: 'user', content: prompt }],
+      'You are an academic planner. Return only valid JSON.');
+    let parsed = null;
+    try { parsed = JSON.parse(aiResponse.content || aiResponse); } catch {
+      parsed = { raw: aiResponse.content || aiResponse };
+    }
+    res.json(parsed);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // Global error handler
@@ -2966,6 +4324,27 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
+
+// === Custom Feature Mounts (batch_06) ===
+app.use('/api/cf-adaptive-quiz-engine', require('./routes/customFeat01_AdaptiveQuizEngine'));
+app.use('/api/cf-parent-insights', require('./routes/customFeat02_ParentInsights'));
+app.use('/api/cf-content-recommendation', require('./routes/customFeat03_ContentRecommendation'));
+app.use('/api/cf-automated-tutoring', require('./routes/customFeat04_AutomatedTutoring'));
+app.use('/api/cf-progress-prediction', require('./routes/customFeat05_ProgressPrediction'));
+
+
+// === Batch 06 Gaps & Frontend Mounts ===
+app.use('/api/gap-no-teacher', require('./routes/gapFeat_no_teacher'));
+app.use('/api/gap-no-curriculum', require('./routes/gapFeat_no_curriculum'));
+app.use('/api/gap-no-peer', require('./routes/gapFeat_no_peer'));
+app.use('/api/gap-no-dedicated-routes-directory-all-routes-inline', require('./routes/gapFeat_no_dedicated_routes_directory_all_routes_inline'));
+app.use('/api/gap-limited-frontend-only-3-pages-despite-rich-backend', require('./routes/gapFeat_limited_frontend_only_3_pages_despite_rich_backend'));
+app.use('/api/gap-no-real-lms-integration-canvas-blackboard-adapter', require('./routes/gapFeat_no_real_lms_integration_canvas_blackboard_adapter'));
+app.use('/api/gap-no-payment-billing-for-parent-subscriptions', require('./routes/gapFeat_no_payment_billing_for_parent_subscriptions'));
+app.use('/api/gap-no-webhooks', require('./routes/gapFeat_no_webhooks'));
+app.use('/api/gap-no-audit-logging-visible', require('./routes/gapFeat_no_audit_logging_visible'));
+app.use('/api/gap-limited-rbac-student-parent-teacher-separation-unc', require('./routes/gapFeat_limited_rbac_student_parent_teacher_separation_unc'));
+
 app.listen(PORT, () => {
   console.log(`AI Tutor Backend running on port ${PORT}`);
 });

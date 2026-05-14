@@ -553,3 +553,79 @@ CREATE INDEX IF NOT EXISTS idx_math_solver_user ON math_solver_results(user_id);
 CREATE INDEX IF NOT EXISTS idx_password_reset_token ON password_reset_tokens(token);
 CREATE INDEX IF NOT EXISTS idx_email_verify_token ON email_verification_tokens(token);
 CREATE INDEX IF NOT EXISTS idx_token_blacklist_hash ON token_blacklist(token_hash);
+
+-- ==================== NEW: Spaced Repetition (SM-2) ====================
+-- Per-user, per-flashcard scheduling state for the SM-2 algorithm.
+CREATE TABLE IF NOT EXISTS sr_card_state (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    flashcard_id UUID REFERENCES flashcards(id) ON DELETE CASCADE,
+    repetitions INTEGER DEFAULT 0,
+    interval_days INTEGER DEFAULT 1,        -- next review interval
+    ease_factor DECIMAL(4,2) DEFAULT 2.50,  -- SM-2 EF
+    next_review_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_reviewed_at TIMESTAMP,
+    last_quality INTEGER,                    -- 0..5 most recent grade
+    UNIQUE(user_id, flashcard_id)
+);
+CREATE INDEX IF NOT EXISTS idx_sr_user_due ON sr_card_state(user_id, next_review_at);
+
+-- ==================== NEW: Adaptive Quiz Confidence ====================
+-- Per-user, per-topic running confidence used to scale next-question difficulty.
+CREATE TABLE IF NOT EXISTS topic_confidence (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    subject VARCHAR(100) NOT NULL,
+    topic VARCHAR(255) NOT NULL,
+    confidence DECIMAL(5,2) DEFAULT 50.00, -- 0..100
+    correct_count INTEGER DEFAULT 0,
+    incorrect_count INTEGER DEFAULT 0,
+    last_difficulty VARCHAR(50) DEFAULT 'medium',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, subject, topic)
+);
+CREATE INDEX IF NOT EXISTS idx_topic_confidence_user ON topic_confidence(user_id);
+
+-- AI-generated adaptive quiz questions. ai_results stores the raw model JSON for traceability.
+CREATE TABLE IF NOT EXISTS adaptive_quiz_questions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    subject VARCHAR(100) NOT NULL,
+    topic VARCHAR(255) NOT NULL,
+    difficulty VARCHAR(50),
+    question_text TEXT NOT NULL,
+    options JSONB,
+    correct_answer TEXT,
+    explanation TEXT,
+    ai_results JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_adaptive_q_user ON adaptive_quiz_questions(user_id);
+
+-- ==================== NEW: Parent / Teacher Linkage ====================
+-- Many-to-many: a parent or teacher can link to one or more student users.
+CREATE TABLE IF NOT EXISTS guardian_links (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    guardian_user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    student_user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    relationship VARCHAR(50) NOT NULL,    -- "parent", "teacher", "tutor"
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(guardian_user_id, student_user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_guardian_links_guardian ON guardian_links(guardian_user_id);
+CREATE INDEX IF NOT EXISTS idx_guardian_links_student ON guardian_links(student_user_id);
+
+-- Weekly AI-generated progress letters (one row per student per week).
+CREATE TABLE IF NOT EXISTS progress_letters (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    week_start DATE NOT NULL,
+    week_end DATE NOT NULL,
+    letter_html TEXT NOT NULL,
+    metrics JSONB,
+    ai_results JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(student_user_id, week_start)
+);
+CREATE INDEX IF NOT EXISTS idx_progress_letters_student ON progress_letters(student_user_id);
+
