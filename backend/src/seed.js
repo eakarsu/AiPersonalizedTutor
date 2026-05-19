@@ -23,6 +23,8 @@ async function seed() {
     // Drop all existing tables so schema changes take effect
     await client.query(`
       DROP TABLE IF EXISTS
+        progress_letters, guardian_links,
+        adaptive_quiz_questions, topic_confidence, sr_card_state,
         password_reset_tokens, email_verification_tokens, token_blacklist,
         user_vocabulary_progress, user_video_progress, user_flashcard_progress,
         quiz_attempts, problem_attempts, user_learning_paths, user_achievements,

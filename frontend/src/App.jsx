@@ -1,5 +1,27 @@
 import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
+import SpacedRepetition from './pages/SpacedRepetition.jsx';
+import AdaptiveQuiz from './pages/AdaptiveQuiz.jsx';
+import ParentDashboard from './pages/ParentDashboard.jsx';
+import LearningStyleContentRecommend from './pages/LearningStyleContentRecommend.jsx';
+import IntegrationsAndParent from './pages/IntegrationsAndParent.jsx';
+// // === Batch 06 Gaps & Frontend Mounts ===
+import CFAdaptiveQuizEnginePage from './pages/CFAdaptiveQuizEnginePage';
+import CFParentInsightsPage from './pages/CFParentInsightsPage';
+import CFContentRecommendationPage from './pages/CFContentRecommendationPage';
+import CFAutomatedTutoringPage from './pages/CFAutomatedTutoringPage';
+import CFProgressPredictionPage from './pages/CFProgressPredictionPage';
+import GapNoTeacherPage from './pages/GapNoTeacherPage';
+import GapNoCurriculumPage from './pages/GapNoCurriculumPage';
+import GapNoPeerPage from './pages/GapNoPeerPage';
+import GapNoDedicatedRoutesDirectoryAllRoutesInlinePage from './pages/GapNoDedicatedRoutesDirectoryAllRoutesInlinePage';
+import GapLimitedFrontendOnly3PagesDespiteRichBackendPage from './pages/GapLimitedFrontendOnly3PagesDespiteRichBackendPage';
+import GapNoRealLmsIntegrationCanvasBlackboardAdapterPage from './pages/GapNoRealLmsIntegrationCanvasBlackboardAdapterPage';
+import GapNoPaymentBillingForParentSubscriptionsPage from './pages/GapNoPaymentBillingForParentSubscriptionsPage';
+import GapNoWebhooksPage from './pages/GapNoWebhooksPage';
+import GapNoAuditLoggingVisiblePage from './pages/GapNoAuditLoggingVisiblePage';
+import GapLimitedRbacStudentParentTeacherSeparationUncPage from './pages/GapLimitedRbacStudentParentTeacherSeparationUncPage';
+import CustomViewsPage from './pages/CustomViewsPage.jsx';
 import {
   BookOpen, GraduationCap, Brain, MessageCircle, Target, BarChart3,
   FileText, Video, Calculator, PenTool, Lightbulb, Award, Clock,
@@ -523,6 +545,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
     { icon: Calculator, label: 'Math Solver', path: '/math-solver' },
     { icon: Sparkles, label: 'Writing Assistant', path: '/writing-assistant' },
     { icon: User, label: 'Learning Style', path: '/learning-style' },
+    { icon: Sparkles, label: 'Style-Tailored Content', path: '/learning-style-recommendations' },
     { icon: Zap, label: 'Quiz Generator', path: '/quiz-generator' },
     { icon: TrendingUp, label: 'Progress Predictor', path: '/progress-predictor' },
     { icon: Lightbulb, label: 'Concept Explainer', path: '/concept-explainer' },
@@ -532,6 +555,10 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
     { icon: BookOpen, label: 'History Explorer', path: '/history-explorer' },
     { icon: Lightbulb, label: 'Science Lab', path: '/science-lab' },
     { icon: Layers, label: 'Flashcard Generator', path: '/flashcard-generator' },
+    { icon: Layers, label: 'Spaced Repetition', path: '/spaced-repetition' },
+    { icon: Brain, label: 'Adaptive Quiz', path: '/adaptive-quiz' },
+    { icon: User, label: 'Parent Dashboard', path: '/parent-dashboard' },
+    { icon: BarChart3, label: 'Tutor Views', path: '/custom-views' },
     { icon: BarChart3, label: 'Analytics', path: '/analytics' },
     { icon: Award, label: 'Achievements', path: '/achievements' },
     { icon: Settings, label: 'Settings', path: '/settings' },
@@ -5788,8 +5815,32 @@ function App() {
           <Route path="/history-explorer" element={<ProtectedRoute><HistoryExplorer /></ProtectedRoute>} />
           <Route path="/science-lab" element={<ProtectedRoute><ScienceLab /></ProtectedRoute>} />
           <Route path="/flashcard-generator" element={<ProtectedRoute><FlashcardGenerator /></ProtectedRoute>} />
+          {/* NEW pages */}
+          <Route path="/spaced-repetition" element={<ProtectedRoute><SpacedRepetition /></ProtectedRoute>} />
+          <Route path="/adaptive-quiz" element={<ProtectedRoute><AdaptiveQuiz /></ProtectedRoute>} />
+          <Route path="/parent-dashboard" element={<ProtectedRoute><ParentDashboard /></ProtectedRoute>} />
+          <Route path="/learning-style-recommendations" element={<ProtectedRoute><LearningStyleContentRecommend /></ProtectedRoute>} />
+          <Route path="/integrations" element={<ProtectedRoute><IntegrationsAndParent /></ProtectedRoute>} />
           <Route path="/" element={<Navigate to="/dashboard" />} />
           <Route path="*" element={<Navigate to="/dashboard" />} />
+        
+          {/* // === Batch 06 Gaps & Frontend Mounts === */}
+          <Route path="/cf-adaptive-quiz-engine" element={<CFAdaptiveQuizEnginePage />} />
+          <Route path="/cf-parent-insights" element={<CFParentInsightsPage />} />
+          <Route path="/cf-content-recommendation" element={<CFContentRecommendationPage />} />
+          <Route path="/cf-automated-tutoring" element={<CFAutomatedTutoringPage />} />
+          <Route path="/cf-progress-prediction" element={<CFProgressPredictionPage />} />
+          <Route path="/gap-no-teacher" element={<GapNoTeacherPage />} />
+          <Route path="/gap-no-curriculum" element={<GapNoCurriculumPage />} />
+          <Route path="/gap-no-peer" element={<GapNoPeerPage />} />
+          <Route path="/gap-no-dedicated-routes-directory-all-routes-inline" element={<GapNoDedicatedRoutesDirectoryAllRoutesInlinePage />} />
+          <Route path="/gap-limited-frontend-only-3-pages-despite-rich-backend" element={<GapLimitedFrontendOnly3PagesDespiteRichBackendPage />} />
+          <Route path="/gap-no-real-lms-integration-canvas-blackboard-adapter" element={<GapNoRealLmsIntegrationCanvasBlackboardAdapterPage />} />
+          <Route path="/gap-no-payment-billing-for-parent-subscriptions" element={<GapNoPaymentBillingForParentSubscriptionsPage />} />
+          <Route path="/gap-no-webhooks" element={<GapNoWebhooksPage />} />
+          <Route path="/gap-no-audit-logging-visible" element={<GapNoAuditLoggingVisiblePage />} />
+          <Route path="/gap-limited-rbac-student-parent-teacher-separation-unc" element={<GapLimitedRbacStudentParentTeacherSeparationUncPage />} />
+          <Route path="/custom-views" element={<ProtectedRoute><CustomViewsPage /></ProtectedRoute>} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
