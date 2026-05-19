@@ -6,6 +6,8 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+let ipKeyGeneratorHelper = null;
+try { ipKeyGeneratorHelper = require('express-rate-limit').ipKeyGenerator; } catch (_) {}
 const multer = require('multer');
 const { body, validationResult } = require('express-validator');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
@@ -111,7 +113,7 @@ const PORT = process.env.BACKEND_PORT || 3001;
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 
 // CORS allowlist — restrict to ALLOWED_ORIGINS env (comma-separated). Falls back to localhost dev.
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:5173')
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:3601,http://127.0.0.1:3601,http://localhost:5173')
   .split(',')
   .map((o) => o.trim())
   .filter(Boolean);
@@ -135,8 +137,9 @@ const aiRateLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
+  keyGenerator: (req, res) => {
     if (req.user?.id) return `user:${req.user.id}`;
+    if (ipKeyGeneratorHelper) return ipKeyGeneratorHelper(req, res);
     return req.ip || 'unknown';
   },
   message: { error: 'AI hourly limit reached (20/hour). Please wait before making more AI requests.' },
@@ -4344,6 +4347,9 @@ app.use('/api/gap-no-payment-billing-for-parent-subscriptions', require('./route
 app.use('/api/gap-no-webhooks', require('./routes/gapFeat_no_webhooks'));
 app.use('/api/gap-no-audit-logging-visible', require('./routes/gapFeat_no_audit_logging_visible'));
 app.use('/api/gap-limited-rbac-student-parent-teacher-separation-unc', require('./routes/gapFeat_limited_rbac_student_parent_teacher_separation_unc'));
+
+// === Custom Views (Tutor Views — 2 viz + 2 non-viz) ===
+app.use('/api/custom-views', require('./routes/customViews'));
 
 app.listen(PORT, () => {
   console.log(`AI Tutor Backend running on port ${PORT}`);

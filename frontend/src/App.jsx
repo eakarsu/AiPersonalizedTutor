@@ -21,6 +21,7 @@ import GapNoPaymentBillingForParentSubscriptionsPage from './pages/GapNoPaymentB
 import GapNoWebhooksPage from './pages/GapNoWebhooksPage';
 import GapNoAuditLoggingVisiblePage from './pages/GapNoAuditLoggingVisiblePage';
 import GapLimitedRbacStudentParentTeacherSeparationUncPage from './pages/GapLimitedRbacStudentParentTeacherSeparationUncPage';
+import CustomViewsPage from './pages/CustomViewsPage.jsx';
 import {
   BookOpen, GraduationCap, Brain, MessageCircle, Target, BarChart3,
   FileText, Video, Calculator, PenTool, Lightbulb, Award, Clock,
@@ -557,6 +558,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
     { icon: Layers, label: 'Spaced Repetition', path: '/spaced-repetition' },
     { icon: Brain, label: 'Adaptive Quiz', path: '/adaptive-quiz' },
     { icon: User, label: 'Parent Dashboard', path: '/parent-dashboard' },
+    { icon: BarChart3, label: 'Tutor Views', path: '/custom-views' },
     { icon: BarChart3, label: 'Analytics', path: '/analytics' },
     { icon: Award, label: 'Achievements', path: '/achievements' },
     { icon: Settings, label: 'Settings', path: '/settings' },
@@ -5838,6 +5840,7 @@ function App() {
           <Route path="/gap-no-webhooks" element={<GapNoWebhooksPage />} />
           <Route path="/gap-no-audit-logging-visible" element={<GapNoAuditLoggingVisiblePage />} />
           <Route path="/gap-limited-rbac-student-parent-teacher-separation-unc" element={<GapLimitedRbacStudentParentTeacherSeparationUncPage />} />
+          <Route path="/custom-views" element={<ProtectedRoute><CustomViewsPage /></ProtectedRoute>} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
