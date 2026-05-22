@@ -77,8 +77,8 @@ DB_PORT=${DB_PORT:-5432}
 DB_NAME=${DB_NAME:-ai_tutor_db}
 DB_USER=${DB_USER:-tutor_user}
 DB_PASSWORD=${DB_PASSWORD:-tutor_password}
-BACKEND_PORT=${BACKEND_PORT:-3001}
-FRONTEND_PORT=3000
+BACKEND_PORT=${BACKEND_PORT:-3501}
+FRONTEND_PORT=3601
 
 # Function to kill process on port
 kill_port() {
@@ -95,9 +95,7 @@ kill_port() {
 print_status "Cleaning up ports..."
 kill_port $BACKEND_PORT
 kill_port $FRONTEND_PORT
-kill_port 5173  # Vite default
-kill_port 5174  # Vite alternate
-kill_port 4173  # Vite preview
+# (skipped killing 5173/5174/4173 to avoid sibling-project collisions)
 print_success "Ports cleaned"
 
 # Check if PostgreSQL is running

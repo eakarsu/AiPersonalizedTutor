@@ -22,6 +22,9 @@ import GapNoWebhooksPage from './pages/GapNoWebhooksPage';
 import GapNoAuditLoggingVisiblePage from './pages/GapNoAuditLoggingVisiblePage';
 import GapLimitedRbacStudentParentTeacherSeparationUncPage from './pages/GapLimitedRbacStudentParentTeacherSeparationUncPage';
 import CustomViewsPage from './pages/CustomViewsPage.jsx';
+import CodexCustomVizFeature from './pages/CodexCustomVizFeature';
+import CodexOperationsFeature from './pages/CodexOperationsFeature';
+
 import {
   BookOpen, GraduationCap, Brain, MessageCircle, Target, BarChart3,
   FileText, Video, Calculator, PenTool, Lightbulb, Award, Clock,
@@ -5780,6 +5783,9 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
+        <Route path="/codex/custom-viz" element={<ProtectedRoute><CodexCustomVizFeature /></ProtectedRoute>} />
+        <Route path="/codex/operations" element={<ProtectedRoute><CodexOperationsFeature /></ProtectedRoute>} />
+
           <Route path="/login" element={<LoginPage />} />
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/learning-paths" element={<ProtectedRoute><LearningPaths /></ProtectedRoute>} />
