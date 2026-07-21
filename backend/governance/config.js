@@ -1,0 +1,33 @@
+module.exports={
+  caseType:'approved_learning_intervention',initialState:'learner_goal_registered',
+  states:['learner_goal_registered','consent_verified','lms_synced','baseline_assessed','plan_proposed','content_review','accessibility_bias_evaluated','teacher_review','learner_guardian_approval','intervention_observed','intervention_failed','appeal','correction','outcome_measured','deletion_pending','deletion_verified','closed'],
+  createRoles:['educator','learning_coordinator'],assessmentRoles:['educator','assessment_reviewer','accessibility_reviewer','learning_coordinator'],auditRoles:['learning_coordinator','privacy_officer','auditor'],connectorRoles:['integration_operator','learning_coordinator'],
+  evidenceKinds:['learner_goal_manifest','learner_consent','guardian_consent','lms_snapshot','baseline_assessment','curriculum_version','learning_plan','content_provenance','accessibility_report','bias_report','teacher_review','learner_approval','intervention_receipt','appeal_record','correction_record','outcome_report','deletion_receipt'],
+  requiredSignals:['learnerProfileVersion','consentVersion','lmsVersion','curriculumVersion','assessmentVersion','policyVersion','scoreValidity','biasDeviation','accessibilityScore','progressionConsistency','recommendationRelevance','safetyFlags','p95LatencyMs','deletionStatus'],
+  professionalBoundary:'Recommendations and scores are advisory to qualified educators and must not autonomously grade, enroll, discipline, message, or deny opportunities. Learners and guardians retain consent, explanation, appeal, correction, export, and deletion rights.',
+  connectors:[{name:'lms_canvas_blackboard',purpose:'consented course, assignment, and completion sync receipts'},{name:'student_information',purpose:'authoritative role and enrollment versions'},{name:'content_repository',purpose:'licensed curriculum provenance'},{name:'calendar',purpose:'approved learning-session receipts'},{name:'communication',purpose:'educator-approved message delivery receipts'},{name:'identity',purpose:'learner guardian and educator role assertions'},{name:'assessment',purpose:'versioned instrument and result evidence'},{name:'accessibility',purpose:'accommodation and format evidence'},{name:'notification',purpose:'appeal correction and deletion receipts'}],
+  transitions:[
+    {from:'learner_goal_registered',action:'verify_consent',to:'consent_verified',roles:['privacy_officer','educator'],requiresEvidence:true},
+    {from:'consent_verified',action:'record_lms_sync',to:'lms_synced',roles:['integration_operator','learning_coordinator'],requiresEvidence:true},
+    {from:'lms_synced',action:'record_baseline_assessment',to:'baseline_assessed',roles:['educator','assessment_reviewer'],requiresEvidence:true},
+    {from:'baseline_assessed',action:'propose_learning_plan',to:'plan_proposed',roles:['educator'],requiresEvidence:true},
+    {from:'plan_proposed',action:'review_content',to:'content_review',roles:['educator','learning_coordinator'],requiresEvidence:true},
+    {from:'content_review',action:'evaluate_accessibility_bias',to:'accessibility_bias_evaluated',roles:['assessment_reviewer','accessibility_reviewer'],requiresEvidence:true},
+    {from:'accessibility_bias_evaluated',action:'submit_teacher_review',to:'teacher_review',roles:['educator'],requiresEvidence:true,dualControl:true},
+    {from:'teacher_review',action:'record_learner_guardian_approval',to:'learner_guardian_approval',roles:['educator','learning_coordinator'],requiresEvidence:true,dualControl:true},
+    {from:'learner_guardian_approval',action:'record_intervention_receipt',to:'intervention_observed',roles:['integration_operator','educator'],requiresEvidence:true},
+    {from:'learner_guardian_approval',action:'record_intervention_failure',to:'intervention_failed',roles:['integration_operator','educator'],requiresEvidence:true},
+    {from:'intervention_failed',action:'open_appeal',to:'appeal',roles:['educator','learning_coordinator'],requiresEvidence:true},
+    {from:'intervention_observed',action:'open_appeal',to:'appeal',roles:['educator','learning_coordinator'],requiresEvidence:true},
+    {from:'appeal',action:'record_correction',to:'correction',roles:['educator','assessment_reviewer'],requiresEvidence:true},
+    {from:'intervention_observed',action:'measure_outcome',to:'outcome_measured',roles:['educator','assessment_reviewer'],requiresEvidence:true,dualControl:true},
+    {from:'correction',action:'measure_outcome',to:'outcome_measured',roles:['educator','assessment_reviewer'],requiresEvidence:true,dualControl:true},
+    {from:'outcome_measured',action:'request_deletion',to:'deletion_pending',roles:['privacy_officer','learning_coordinator'],requiresEvidence:true},
+    {from:'deletion_pending',action:'verify_deletion',to:'deletion_verified',roles:['privacy_officer','integration_operator'],requiresEvidence:true,dualControl:true},
+    {from:'deletion_verified',action:'close_intervention',to:'closed',roles:['privacy_officer','auditor'],requiresEvidence:true}
+  ],
+  acceptedFixture:{learnerProfileVersion:'lp1',consentVersion:'c1',lmsVersion:'lms1',curriculumVersion:'cur1',assessmentVersion:'a1',policyVersion:'p1',scoreValidity:0.92,biasDeviation:0.02,accessibilityScore:0.95,progressionConsistency:0.9,recommendationRelevance:0.9,safetyFlags:0,p95LatencyMs:850,deletionStatus:'not_requested'},
+  rejectedFixture:{learnerProfileVersion:'lp1',consentVersion:'c1',lmsVersion:'lms1',curriculumVersion:'cur1',assessmentVersion:'a1',policyVersion:'p1',scoreValidity:0.92,biasDeviation:0.2,accessibilityScore:0.95,progressionConsistency:0.9,recommendationRelevance:0.9,safetyFlags:0,p95LatencyMs:850,deletionStatus:'not_requested'},
+  readyDisposition:'qualified_educator_review_required',holdDisposition:'consent_validity_bias_accessibility_or_safety_hold',decisionField:'gradeOrEnrollmentCommand',
+  assess:x=>{const validity=Number(x.scoreValidity),bias=Number(x.biasDeviation),accessibility=Number(x.accessibilityScore),progression=Number(x.progressionConsistency),relevance=Number(x.recommendationRelevance),safety=Number(x.safetyFlags),latency=Number(x.p95LatencyMs);const ready=validity>=0.85&&bias<=0.05&&accessibility>=0.9&&progression>=0.8&&relevance>=0.8&&safety===0&&latency<=1500&&x.deletionStatus==='not_requested';return{disposition:ready?'qualified_educator_review_required':'consent_validity_bias_accessibility_or_safety_hold',gradeOrEnrollmentCommand:null,messageCommand:null,paymentCommand:null,metrics:{validity,bias,accessibility,progression,relevance,safety,latency},versions:{learnerProfile:x.learnerProfileVersion,consent:x.consentVersion,lms:x.lmsVersion,curriculum:x.curriculumVersion,assessment:x.assessmentVersion,policy:x.policyVersion}};}
+};

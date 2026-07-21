@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 
 async function call(path, opts = {}) {
   const token = localStorage.getItem('token');
-  const res = await fetch((import.meta.env?.VITE_API_URL || 'http://localhost:3001/api') + path, {
+  const res = await fetch((import.meta.env?.VITE_API_URL || '/api') + path, {
     ...opts,
     headers: {
       'Content-Type': 'application/json',

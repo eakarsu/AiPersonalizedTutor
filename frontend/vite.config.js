@@ -16,15 +16,5 @@ export default defineConfig({
     esbuildOptions: {
       loader: { '.js': 'jsx' },
     },
-  },
-  server: {
-    port: 3602,
-    strictPort: true,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:3501',
-        changeOrigin: true
-      }
-    }
   }
 })

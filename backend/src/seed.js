@@ -4,13 +4,12 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 5432,
-  database: process.env.DB_NAME || 'ai_tutor_db',
-  user: process.env.DB_USER || 'tutor_user',
-  password: process.env.DB_PASSWORD || 'tutor_password',
-});
+if (process.env.NODE_ENV === 'production' || process.env.ALLOW_DEMO_SEED !== 'true') throw new Error('Demo seed is disabled outside an explicitly approved non-production database.');
+if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required.');
+const demoEmail = String(process.env.DEMO_EMAIL || '').trim().toLowerCase();
+const demoPassword = String(process.env.DEMO_PASSWORD || '');
+if (!demoEmail || demoPassword.length < 12) throw new Error('DEMO_EMAIL and a 12+ character DEMO_PASSWORD are required.');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 async function seed() {
   console.log('Starting database seeding...');
@@ -36,7 +35,7 @@ async function seed() {
         performance_analytics, study_sessions, essays, writing_prompts,
         vocabulary_words, video_lessons, flashcards, flashcard_decks,
         math_problems, achievements, goals, practice_problems,
-        quiz_questions, quizzes, study_materials, user_learning_paths,
+        quiz_questions, quizzes, study_materials,
         science_experiments, historical_events, learning_paths, users
       CASCADE
     `);
@@ -52,17 +51,17 @@ async function seed() {
     console.log('Schema created successfully');
 
     // Seed Users
-    const passwordHash = await bcrypt.hash('password123', 10);
+    const passwordHash = await bcrypt.hash(demoPassword, 12);
     const users = await client.query(`
       INSERT INTO users (email, password_hash, full_name, role, grade_level, learning_style, email_verified) VALUES
-      ('student@demo.com', $1, 'Demo Student', 'student', '10th Grade', 'visual', true),
+      ($2, $1, 'Runtime Student', 'student', '10th Grade', 'visual', true),
       ('teacher@demo.com', $1, 'Demo Teacher', 'teacher', null, null, true),
       ('admin@demo.com', $1, 'Admin User', 'admin', null, null, true),
       ('john@example.com', $1, 'John Smith', 'student', '9th Grade', 'auditory', true),
       ('sarah@example.com', $1, 'Sarah Johnson', 'student', '11th Grade', 'reading_writing', true),
       ('mike@example.com', $1, 'Mike Williams', 'student', '10th Grade', 'kinesthetic', true)
       RETURNING id
-    `, [passwordHash]);
+    `, [passwordHash, demoEmail]);
     console.log('Users seeded (6 users)');
     const studentId = users.rows[0].id;
 
@@ -845,10 +844,7 @@ async function seed() {
     console.log('  - 16 Science Experiments');
     console.log('  - 16 Homework Assignments');
     console.log('  - Study Schedules');
-    console.log('\nDemo Accounts:');
-    console.log('  Student: student@demo.com / password123');
-    console.log('  Teacher: teacher@demo.com / password123');
-    console.log('  Admin:   admin@demo.com / password123');
+    console.log('\nDemo credentials were injected and are not displayed.');
 
   } catch (error) {
     await client.query('ROLLBACK');

@@ -315,7 +315,8 @@ CREATE TABLE IF NOT EXISTS achievements (
     icon VARCHAR(100),
     points INTEGER DEFAULT 0,
     category VARCHAR(100),
-    criteria JSONB
+    criteria JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- User Achievements
@@ -628,4 +629,3 @@ CREATE TABLE IF NOT EXISTS progress_letters (
     UNIQUE(student_user_id, week_start)
 );
 CREATE INDEX IF NOT EXISTS idx_progress_letters_student ON progress_letters(student_user_id);
-

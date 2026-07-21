@@ -1,0 +1,7 @@
+# Governed personalized learning intervention
+
+The supported API is `/api/governance`. It records learner goals, learner/guardian consent, LMS synchronization, baseline assessments, editable plans, content provenance, accessibility/bias evaluation, educator review, approval, intervention receipts, appeal/correction, outcomes, retention, and deletion. It never grades, enrolls, disciplines, messages, charges, or replaces a qualified educator.
+
+Apply `backend/migrations/001_governed_learning_intervention.sql` separately. Pre-provision institution membership and learner subject prefixes. Canvas/Blackboard LMS, student-information, content, calendar, communication, identity, assessment, accessibility, and notification workers remain disabled until consent, credentials, typed contracts, sync/deletion propagation, signed receipts, retry/dead-letter, and recovery tests pass. The LMS gap is replaced by this durable adapter/outbox contract on the supported path.
+
+Use `.env.example`; production rejects weak secrets, wildcard CORS, demo/mock/provider flags, and startup mutation. `start.sh` never installs, seeds, migrates, resets data, or reclaims ports. Educators, learners, guardians, accessibility experts, and independent evaluators must validate assessment validity, cohort bias, progression, edge cases, accommodations, explanations, appeals, retention, deletion, latency, and real learning outcomes. No real learner record or LMS was connected here.
