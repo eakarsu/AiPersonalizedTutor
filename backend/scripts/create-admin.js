@@ -10,9 +10,9 @@ async function main() {
   const password = String(process.env.PROVISION_ADMIN_PASSWORD || '');
   const name = String(process.env.PROVISION_ADMIN_NAME || '').trim();
   if (!email || !name || password.length < 12) throw new Error('Admin email, name, and a 12+ character password are required.');
-  const existing = await pool.query('SELECT id FROM users WHERE lower(email)=$1 LIMIT 1', [email]);
-  if (existing.rows.length) return console.log('Initial administrator already exists; credentials were not changed.');
-  await pool.query(`INSERT INTO users(email,password_hash,full_name,role,email_verified) VALUES($1,$2,$3,'admin',true)`, [email, await bcrypt.hash(password, 12), name]);
-  console.log('Initial tutor administrator created.');
+  await pool.query(`INSERT INTO users(email,password_hash,full_name,role,email_verified) VALUES($1,$2,$3,'admin',true)
+    ON CONFLICT(email) DO UPDATE SET password_hash=EXCLUDED.password_hash,full_name=EXCLUDED.full_name,role='admin',email_verified=true,updated_at=NOW()`,
+    [email, await bcrypt.hash(password, 12), name]);
+  console.log('Tutor administrator provisioned.');
 }
 main().catch((error) => { console.error(error.message); process.exitCode = 1; }).finally(() => pool.end());
