@@ -39,7 +39,10 @@ import {
 } from 'recharts';
 
 // API Base URL
-const API_URL = '/api';
+const configuredApiBase = import.meta.env.VITE_API_URL || '/api';
+const API_URL = configuredApiBase.endsWith('/api')
+  ? configuredApiBase
+  : `${configuredApiBase.replace(/\/$/, '')}/api`;
 
 // Auth Context
 const AuthContext = createContext(null);
@@ -857,12 +860,12 @@ const LoginPage = () => {
 
           <Button type="button" variant="secondary" className="w-full" onClick={populateDemo}>
             <Zap size={18} className="mr-2" />
-            Use Demo Account
+            Auto Fill Demo Credentials
           </Button>
         </form>
 
         <p className="text-center text-sm text-gray-500 mt-6">
-          Demo: student@demo.com / password123
+          Demo credentials are loaded from the local runtime configuration.
         </p>
       </div>
     </div>
