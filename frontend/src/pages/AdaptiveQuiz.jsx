@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import AIReport from '../components/AIReport';
+import FullFieldPresets from '../components/FullFieldPresets';
 
 const API_URL = '/api';
 
@@ -18,6 +20,12 @@ async function apiFetch(endpoint, options = {}) {
   }
   return res.json();
 }
+
+const QUIZ_PRESETS = [
+  { label: 'Algebra practice', values: { subject: 'Mathematics', topic: 'Quadratic equations' } },
+  { label: 'Biology practice', values: { subject: 'Biology', topic: 'Cell division and mitosis' } },
+  { label: 'History practice', values: { subject: 'World History', topic: 'Industrial Revolution' } },
+];
 
 export default function AdaptiveQuiz() {
   const [subject, setSubject] = useState('Mathematics');
@@ -92,6 +100,19 @@ export default function AdaptiveQuiz() {
         </p>
       </div>
 
+      <FullFieldPresets
+        value={{ subject, topic }}
+        presets={QUIZ_PRESETS}
+        disabled={loading}
+        onChange={(values) => {
+          setSubject(values.subject);
+          setTopic(values.topic);
+          setQuestion(null);
+          setFeedback(null);
+          setAnswer('');
+        }}
+      />
+
       <div className="flex gap-2">
         <input
           className="border p-2 rounded flex-1"
@@ -154,12 +175,7 @@ export default function AdaptiveQuiz() {
             Submit
           </button>
 
-          {feedback && (
-            <div className={`p-3 rounded ${feedback.correct ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
-              <div className="font-semibold">{feedback.correct ? 'Correct' : 'Not quite'}</div>
-              {feedback.explanation && <div className="text-sm mt-1">{feedback.explanation}</div>}
-            </div>
-          )}
+          {feedback && <AIReport response={feedback} title="Answer feedback" />}
         </div>
       )}
 

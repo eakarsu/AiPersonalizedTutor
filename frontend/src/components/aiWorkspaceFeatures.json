@@ -1,0 +1,302 @@
+[
+  {
+    "name": "CFAdaptiveQuizEnginePage",
+    "id": "cf-adaptive-quiz-engine",
+    "title": "Adaptive quiz engine",
+    "description": "Prepare a professional advisory report for adaptive quiz engine using the brief and evidence you provide. Review the findings, assumptions, and action plan before applying changes.",
+    "samples": [
+      {
+        "label": "Scenario",
+        "value": "Run Adaptive quiz engine for a realistic customer case.\nContext: A mid-market operations team is under deadline pressure and needs an actionable recommendation.\nGoal: identify the best next steps, risks, assumptions, and expected business impact.\nOutput format: concise summary, prioritized actions, confidence level, and follow-up questions."
+      },
+      {
+        "label": "Data sample",
+        "value": "Analyze this Adaptive quiz engine data sample.\nRecords:\n- Item A: high priority, owner unassigned, due this week, customer impact high\n- Item B: medium priority, owner assigned, blocked by missing information\n- Item C: low priority, recurring pattern, possible automation candidate\nReturn structured findings, anomalies, recommendations, and a short implementation plan."
+      },
+      {
+        "label": "Executive review",
+        "value": "Prepare an executive review for Adaptive quiz engine.\nAudience: business owner and operations manager.\nInclude: what happened, why it matters, financial or operational impact, risks, and three decisions needed today.\nTone: professional, direct, and implementation-focused."
+      }
+    ]
+  },
+  {
+    "name": "CFAutomatedTutoringPage",
+    "id": "cf-automated-tutoring",
+    "title": "Automated tutoring",
+    "description": "Prepare a professional advisory report for automated tutoring using the brief and evidence you provide. Review the findings, assumptions, and action plan before applying changes.",
+    "samples": [
+      {
+        "label": "Scenario",
+        "value": "Run Automated tutoring for a realistic customer case.\nContext: A mid-market operations team is under deadline pressure and needs an actionable recommendation.\nGoal: identify the best next steps, risks, assumptions, and expected business impact.\nOutput format: concise summary, prioritized actions, confidence level, and follow-up questions."
+      },
+      {
+        "label": "Data sample",
+        "value": "Analyze this Automated tutoring data sample.\nRecords:\n- Item A: high priority, owner unassigned, due this week, customer impact high\n- Item B: medium priority, owner assigned, blocked by missing information\n- Item C: low priority, recurring pattern, possible automation candidate\nReturn structured findings, anomalies, recommendations, and a short implementation plan."
+      },
+      {
+        "label": "Executive review",
+        "value": "Prepare an executive review for Automated tutoring.\nAudience: business owner and operations manager.\nInclude: what happened, why it matters, financial or operational impact, risks, and three decisions needed today.\nTone: professional, direct, and implementation-focused."
+      }
+    ]
+  },
+  {
+    "name": "CFContentRecommendationPage",
+    "id": "cf-content-recommendation",
+    "title": "Content recommendation",
+    "description": "Prepare a professional advisory report for content recommendation using the brief and evidence you provide. Review the findings, assumptions, and action plan before applying changes.",
+    "samples": [
+      {
+        "label": "Scenario",
+        "value": "Run Content recommendation for a realistic customer case.\nContext: A mid-market operations team is under deadline pressure and needs an actionable recommendation.\nGoal: identify the best next steps, risks, assumptions, and expected business impact.\nOutput format: concise summary, prioritized actions, confidence level, and follow-up questions."
+      },
+      {
+        "label": "Data sample",
+        "value": "Analyze this Content recommendation data sample.\nRecords:\n- Item A: high priority, owner unassigned, due this week, customer impact high\n- Item B: medium priority, owner assigned, blocked by missing information\n- Item C: low priority, recurring pattern, possible automation candidate\nReturn structured findings, anomalies, recommendations, and a short implementation plan."
+      },
+      {
+        "label": "Executive review",
+        "value": "Prepare an executive review for Content recommendation.\nAudience: business owner and operations manager.\nInclude: what happened, why it matters, financial or operational impact, risks, and three decisions needed today.\nTone: professional, direct, and implementation-focused."
+      }
+    ]
+  },
+  {
+    "name": "CFParentInsightsPage",
+    "id": "cf-parent-insights",
+    "title": "Parent insights",
+    "description": "Prepare a professional advisory report for parent insights using the brief and evidence you provide. Review the findings, assumptions, and action plan before applying changes.",
+    "samples": [
+      {
+        "label": "Scenario",
+        "value": "Run Parent insights for a realistic customer case.\nContext: A mid-market operations team is under deadline pressure and needs an actionable recommendation.\nGoal: identify the best next steps, risks, assumptions, and expected business impact.\nOutput format: concise summary, prioritized actions, confidence level, and follow-up questions."
+      },
+      {
+        "label": "Data sample",
+        "value": "Analyze this Parent insights data sample.\nRecords:\n- Item A: high priority, owner unassigned, due this week, customer impact high\n- Item B: medium priority, owner assigned, blocked by missing information\n- Item C: low priority, recurring pattern, possible automation candidate\nReturn structured findings, anomalies, recommendations, and a short implementation plan."
+      },
+      {
+        "label": "Executive review",
+        "value": "Prepare an executive review for Parent insights.\nAudience: business owner and operations manager.\nInclude: what happened, why it matters, financial or operational impact, risks, and three decisions needed today.\nTone: professional, direct, and implementation-focused."
+      }
+    ]
+  },
+  {
+    "name": "CFProgressPredictionPage",
+    "id": "cf-progress-prediction",
+    "title": "Progress prediction",
+    "description": "Prepare a professional advisory report for progress prediction using the brief and evidence you provide. Review the findings, assumptions, and action plan before applying changes.",
+    "samples": [
+      {
+        "label": "Scenario",
+        "value": "Run Progress prediction for a realistic customer case.\nContext: A mid-market operations team is under deadline pressure and needs an actionable recommendation.\nGoal: identify the best next steps, risks, assumptions, and expected business impact.\nOutput format: concise summary, prioritized actions, confidence level, and follow-up questions."
+      },
+      {
+        "label": "Data sample",
+        "value": "Analyze this Progress prediction data sample.\nRecords:\n- Item A: high priority, owner unassigned, due this week, customer impact high\n- Item B: medium priority, owner assigned, blocked by missing information\n- Item C: low priority, recurring pattern, possible automation candidate\nReturn structured findings, anomalies, recommendations, and a short implementation plan."
+      },
+      {
+        "label": "Executive review",
+        "value": "Prepare an executive review for Progress prediction.\nAudience: business owner and operations manager.\nInclude: what happened, why it matters, financial or operational impact, risks, and three decisions needed today.\nTone: professional, direct, and implementation-focused."
+      }
+    ]
+  },
+  {
+    "name": "GapLimitedFrontendOnly3PagesDespiteRichBackendPage",
+    "id": "gap-limited-frontend-only-3-pages-despite-rich-backend",
+    "title": "Limited frontend (only 3 pages despite rich backend)",
+    "description": "Prepare a professional advisory report for limited frontend (only 3 pages despite rich backend) using the brief and evidence you provide. Review the findings, assumptions, and action plan before applying changes.",
+    "samples": [
+      {
+        "label": "Scenario",
+        "value": "Run Limited frontend (only 3 pages despite rich backend) for a realistic customer case.\nContext: A mid-market operations team is under deadline pressure and needs an actionable recommendation.\nGoal: identify the best next steps, risks, assumptions, and expected business impact.\nOutput format: concise summary, prioritized actions, confidence level, and follow-up questions."
+      },
+      {
+        "label": "Data sample",
+        "value": "Analyze this Limited frontend (only 3 pages despite rich backend) data sample.\nRecords:\n- Item A: high priority, owner unassigned, due this week, customer impact high\n- Item B: medium priority, owner assigned, blocked by missing information\n- Item C: low priority, recurring pattern, possible automation candidate\nReturn structured findings, anomalies, recommendations, and a short implementation plan."
+      },
+      {
+        "label": "Executive review",
+        "value": "Prepare an executive review for Limited frontend (only 3 pages despite rich backend).\nAudience: business owner and operations manager.\nInclude: what happened, why it matters, financial or operational impact, risks, and three decisions needed today.\nTone: professional, direct, and implementation-focused."
+      }
+    ]
+  },
+  {
+    "name": "GapLimitedRbacStudentParentTeacherSeparationUncPage",
+    "id": "gap-limited-rbac-student-parent-teacher-separation-unc",
+    "title": "Limited RBAC (student/parent/teacher separation unclear)",
+    "description": "Prepare a professional advisory report for limited rbac (student/parent/teacher separation unclear) using the brief and evidence you provide. Review the findings, assumptions, and action plan before applying changes.",
+    "samples": [
+      {
+        "label": "Scenario",
+        "value": "Run Limited RBAC (student/parent/teacher separation unclear) for a realistic customer case.\nContext: A mid-market operations team is under deadline pressure and needs an actionable recommendation.\nGoal: identify the best next steps, risks, assumptions, and expected business impact.\nOutput format: concise summary, prioritized actions, confidence level, and follow-up questions."
+      },
+      {
+        "label": "Data sample",
+        "value": "Analyze this Limited RBAC (student/parent/teacher separation unclear) data sample.\nRecords:\n- Item A: high priority, owner unassigned, due this week, customer impact high\n- Item B: medium priority, owner assigned, blocked by missing information\n- Item C: low priority, recurring pattern, possible automation candidate\nReturn structured findings, anomalies, recommendations, and a short implementation plan."
+      },
+      {
+        "label": "Executive review",
+        "value": "Prepare an executive review for Limited RBAC (student/parent/teacher separation unclear).\nAudience: business owner and operations manager.\nInclude: what happened, why it matters, financial or operational impact, risks, and three decisions needed today.\nTone: professional, direct, and implementation-focused."
+      }
+    ]
+  },
+  {
+    "name": "GapNoAuditLoggingVisiblePage",
+    "id": "gap-no-audit-logging-visible",
+    "title": "No audit logging visible",
+    "description": "Prepare a professional advisory report for no audit logging visible using the brief and evidence you provide. Review the findings, assumptions, and action plan before applying changes.",
+    "samples": [
+      {
+        "label": "Scenario",
+        "value": "Run No audit logging visible for a realistic customer case.\nContext: A mid-market operations team is under deadline pressure and needs an actionable recommendation.\nGoal: identify the best next steps, risks, assumptions, and expected business impact.\nOutput format: concise summary, prioritized actions, confidence level, and follow-up questions."
+      },
+      {
+        "label": "Data sample",
+        "value": "Analyze this No audit logging visible data sample.\nRecords:\n- Item A: high priority, owner unassigned, due this week, customer impact high\n- Item B: medium priority, owner assigned, blocked by missing information\n- Item C: low priority, recurring pattern, possible automation candidate\nReturn structured findings, anomalies, recommendations, and a short implementation plan."
+      },
+      {
+        "label": "Executive review",
+        "value": "Prepare an executive review for No audit logging visible.\nAudience: business owner and operations manager.\nInclude: what happened, why it matters, financial or operational impact, risks, and three decisions needed today.\nTone: professional, direct, and implementation-focused."
+      }
+    ]
+  },
+  {
+    "name": "GapNoCurriculumPage",
+    "id": "gap-no-curriculum",
+    "title": "No '/curriculum",
+    "description": "Prepare a professional advisory report for no '/curriculum using the brief and evidence you provide. Review the findings, assumptions, and action plan before applying changes.",
+    "samples": [
+      {
+        "label": "Scenario",
+        "value": "Run No '/curriculum for a realistic customer case.\nContext: A mid-market operations team is under deadline pressure and needs an actionable recommendation.\nGoal: identify the best next steps, risks, assumptions, and expected business impact.\nOutput format: concise summary, prioritized actions, confidence level, and follow-up questions."
+      },
+      {
+        "label": "Data sample",
+        "value": "Analyze this No '/curriculum data sample.\nRecords:\n- Item A: high priority, owner unassigned, due this week, customer impact high\n- Item B: medium priority, owner assigned, blocked by missing information\n- Item C: low priority, recurring pattern, possible automation candidate\nReturn structured findings, anomalies, recommendations, and a short implementation plan."
+      },
+      {
+        "label": "Executive review",
+        "value": "Prepare an executive review for No '/curriculum.\nAudience: business owner and operations manager.\nInclude: what happened, why it matters, financial or operational impact, risks, and three decisions needed today.\nTone: professional, direct, and implementation-focused."
+      }
+    ]
+  },
+  {
+    "name": "GapNoDedicatedRoutesDirectoryAllRoutesInlinePage",
+    "id": "gap-no-dedicated-routes-directory-all-routes-inline",
+    "title": "No dedicated routes directory (all routes inline",
+    "description": "Prepare a professional advisory report for no dedicated routes directory (all routes inline using the brief and evidence you provide. Review the findings, assumptions, and action plan before applying changes.",
+    "samples": [
+      {
+        "label": "Scenario",
+        "value": "Run No dedicated routes directory (all routes inline for a realistic customer case.\nContext: A mid-market operations team is under deadline pressure and needs an actionable recommendation.\nGoal: identify the best next steps, risks, assumptions, and expected business impact.\nOutput format: concise summary, prioritized actions, confidence level, and follow-up questions."
+      },
+      {
+        "label": "Data sample",
+        "value": "Analyze this No dedicated routes directory (all routes inline data sample.\nRecords:\n- Item A: high priority, owner unassigned, due this week, customer impact high\n- Item B: medium priority, owner assigned, blocked by missing information\n- Item C: low priority, recurring pattern, possible automation candidate\nReturn structured findings, anomalies, recommendations, and a short implementation plan."
+      },
+      {
+        "label": "Executive review",
+        "value": "Prepare an executive review for No dedicated routes directory (all routes inline.\nAudience: business owner and operations manager.\nInclude: what happened, why it matters, financial or operational impact, risks, and three decisions needed today.\nTone: professional, direct, and implementation-focused."
+      }
+    ]
+  },
+  {
+    "name": "GapNoPaymentBillingForParentSubscriptionsPage",
+    "id": "gap-no-payment-billing-for-parent-subscriptions",
+    "title": "No payment/billing for parent subscriptions",
+    "description": "Prepare a professional advisory report for no payment/billing for parent subscriptions using the brief and evidence you provide. Review the findings, assumptions, and action plan before applying changes.",
+    "samples": [
+      {
+        "label": "Scenario",
+        "value": "Run No payment/billing for parent subscriptions for a realistic customer case.\nContext: A mid-market operations team is under deadline pressure and needs an actionable recommendation.\nGoal: identify the best next steps, risks, assumptions, and expected business impact.\nOutput format: concise summary, prioritized actions, confidence level, and follow-up questions."
+      },
+      {
+        "label": "Data sample",
+        "value": "Analyze this No payment/billing for parent subscriptions data sample.\nRecords:\n- Item A: high priority, owner unassigned, due this week, customer impact high\n- Item B: medium priority, owner assigned, blocked by missing information\n- Item C: low priority, recurring pattern, possible automation candidate\nReturn structured findings, anomalies, recommendations, and a short implementation plan."
+      },
+      {
+        "label": "Executive review",
+        "value": "Prepare an executive review for No payment/billing for parent subscriptions.\nAudience: business owner and operations manager.\nInclude: what happened, why it matters, financial or operational impact, risks, and three decisions needed today.\nTone: professional, direct, and implementation-focused."
+      }
+    ]
+  },
+  {
+    "name": "GapNoPeerPage",
+    "id": "gap-no-peer",
+    "title": "No '/peer",
+    "description": "Prepare a professional advisory report for no '/peer using the brief and evidence you provide. Review the findings, assumptions, and action plan before applying changes.",
+    "samples": [
+      {
+        "label": "Scenario",
+        "value": "Run No '/peer for a realistic customer case.\nContext: A mid-market operations team is under deadline pressure and needs an actionable recommendation.\nGoal: identify the best next steps, risks, assumptions, and expected business impact.\nOutput format: concise summary, prioritized actions, confidence level, and follow-up questions."
+      },
+      {
+        "label": "Data sample",
+        "value": "Analyze this No '/peer data sample.\nRecords:\n- Item A: high priority, owner unassigned, due this week, customer impact high\n- Item B: medium priority, owner assigned, blocked by missing information\n- Item C: low priority, recurring pattern, possible automation candidate\nReturn structured findings, anomalies, recommendations, and a short implementation plan."
+      },
+      {
+        "label": "Executive review",
+        "value": "Prepare an executive review for No '/peer.\nAudience: business owner and operations manager.\nInclude: what happened, why it matters, financial or operational impact, risks, and three decisions needed today.\nTone: professional, direct, and implementation-focused."
+      }
+    ]
+  },
+  {
+    "name": "GapNoRealLmsIntegrationCanvasBlackboardAdapterPage",
+    "id": "gap-no-real-lms-integration-canvas-blackboard-adapter",
+    "title": "No real LMS integration (Canvas, Blackboard adapter)",
+    "description": "Prepare a professional advisory report for no real lms integration (canvas, blackboard adapter) using the brief and evidence you provide. Review the findings, assumptions, and action plan before applying changes.",
+    "samples": [
+      {
+        "label": "Scenario",
+        "value": "Run No real LMS integration (Canvas, Blackboard adapter) for a realistic customer case.\nContext: A mid-market operations team is under deadline pressure and needs an actionable recommendation.\nGoal: identify the best next steps, risks, assumptions, and expected business impact.\nOutput format: concise summary, prioritized actions, confidence level, and follow-up questions."
+      },
+      {
+        "label": "Data sample",
+        "value": "Analyze this No real LMS integration (Canvas, Blackboard adapter) data sample.\nRecords:\n- Item A: high priority, owner unassigned, due this week, customer impact high\n- Item B: medium priority, owner assigned, blocked by missing information\n- Item C: low priority, recurring pattern, possible automation candidate\nReturn structured findings, anomalies, recommendations, and a short implementation plan."
+      },
+      {
+        "label": "Executive review",
+        "value": "Prepare an executive review for No real LMS integration (Canvas, Blackboard adapter).\nAudience: business owner and operations manager.\nInclude: what happened, why it matters, financial or operational impact, risks, and three decisions needed today.\nTone: professional, direct, and implementation-focused."
+      }
+    ]
+  },
+  {
+    "name": "GapNoTeacherPage",
+    "id": "gap-no-teacher",
+    "title": "No '/teacher",
+    "description": "Prepare a professional advisory report for no '/teacher using the brief and evidence you provide. Review the findings, assumptions, and action plan before applying changes.",
+    "samples": [
+      {
+        "label": "Scenario",
+        "value": "Run No '/teacher for a realistic customer case.\nContext: A mid-market operations team is under deadline pressure and needs an actionable recommendation.\nGoal: identify the best next steps, risks, assumptions, and expected business impact.\nOutput format: concise summary, prioritized actions, confidence level, and follow-up questions."
+      },
+      {
+        "label": "Data sample",
+        "value": "Analyze this No '/teacher data sample.\nRecords:\n- Item A: high priority, owner unassigned, due this week, customer impact high\n- Item B: medium priority, owner assigned, blocked by missing information\n- Item C: low priority, recurring pattern, possible automation candidate\nReturn structured findings, anomalies, recommendations, and a short implementation plan."
+      },
+      {
+        "label": "Executive review",
+        "value": "Prepare an executive review for No '/teacher.\nAudience: business owner and operations manager.\nInclude: what happened, why it matters, financial or operational impact, risks, and three decisions needed today.\nTone: professional, direct, and implementation-focused."
+      }
+    ]
+  },
+  {
+    "name": "GapNoWebhooksPage",
+    "id": "gap-no-webhooks",
+    "title": "No webhooks",
+    "description": "Prepare a professional advisory report for no webhooks using the brief and evidence you provide. Review the findings, assumptions, and action plan before applying changes.",
+    "samples": [
+      {
+        "label": "Scenario",
+        "value": "Run No webhooks for a realistic customer case.\nContext: A mid-market operations team is under deadline pressure and needs an actionable recommendation.\nGoal: identify the best next steps, risks, assumptions, and expected business impact.\nOutput format: concise summary, prioritized actions, confidence level, and follow-up questions."
+      },
+      {
+        "label": "Data sample",
+        "value": "Analyze this No webhooks data sample.\nRecords:\n- Item A: high priority, owner unassigned, due this week, customer impact high\n- Item B: medium priority, owner assigned, blocked by missing information\n- Item C: low priority, recurring pattern, possible automation candidate\nReturn structured findings, anomalies, recommendations, and a short implementation plan."
+      },
+      {
+        "label": "Executive review",
+        "value": "Prepare an executive review for No webhooks.\nAudience: business owner and operations manager.\nInclude: what happened, why it matters, financial or operational impact, risks, and three decisions needed today.\nTone: professional, direct, and implementation-focused."
+      }
+    ]
+  }
+]

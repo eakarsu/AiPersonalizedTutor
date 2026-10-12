@@ -1,3 +1,5 @@
+import AIReportLibrary from './components/AIReportLibrary';
+import AIReport from './components/AIReport';
 import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import SpacedRepetition from './pages/SpacedRepetition.jsx';
@@ -64,6 +66,14 @@ const AuthProvider = ({ children }) => {
     setLoading(false);
   }, [token]);
 
+  const storeSession = (data) => {
+    setUser(data.user);
+    setToken(data.token);
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify(data.user));
+    return { success: true };
+  };
+
   const login = async (email, password) => {
     const res = await fetch(`${API_URL}/auth/login`, {
       method: 'POST',
@@ -71,14 +81,18 @@ const AuthProvider = ({ children }) => {
       body: JSON.stringify({ email, password })
     });
     const data = await res.json();
-    if (res.ok) {
-      setUser(data.user);
-      setToken(data.token);
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      return { success: true };
-    }
+    if (res.ok) return storeSession(data);
     return { success: false, error: data.error };
+  };
+
+  const demoLogin = async () => {
+    const res = await fetch(`${API_URL}/auth/demo-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (res.ok) return storeSession(data);
+    return { success: false, error: data.error || 'Demo login is unavailable' };
   };
 
   const logout = async () => {
@@ -95,7 +109,7 @@ const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, token, login, demoLogin, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );
@@ -630,7 +644,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
             Logout
           </Button>
         </div>
-      </aside>
+      <AIReportLibrary /></aside>
     </>
   );
 };
@@ -657,13 +671,13 @@ const AskAIWidget = () => {
     setMessages(prev => [...prev, { role: 'user', content: question }]);
     setLoading(true);
 
-    const result = await apiFetch('/ai/ask', {
+    const result = await apiFetch('/ai/tutor-advice', {
       method: 'POST',
       body: JSON.stringify({ question, context: location.pathname.replace('/', '').replace(/-/g, ' ') })
     });
 
-    if (result && result.answer) {
-      setMessages(prev => [...prev, { role: 'assistant', content: result.answer }]);
+    if (result && (result.content || result.answer)) {
+      setMessages(prev => [...prev, { role: 'assistant', content: result.content || result.answer }]);
     } else {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I couldn\'t get a response. Please try again.' }]);
     }
@@ -706,9 +720,13 @@ const AskAIWidget = () => {
             )}
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${msg.role === 'user' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-800'}`}>
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
-                </div>
+                {msg.role === 'user' ? (
+                  <div className="max-w-[85%] rounded-xl px-3 py-2 text-sm bg-green-500 text-white">
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                  </div>
+                ) : (
+                  <div className="max-w-[95%] w-full"><AIResponseDisplay content={msg.content} title="AI response" /></div>
+                )}
               </div>
             ))}
             {loading && (
@@ -725,6 +743,13 @@ const AskAIWidget = () => {
             <div ref={messagesEndRef} />
           </div>
 
+          <div className="px-3 pt-2 flex flex-wrap gap-1" aria-label="Tutor question examples">
+            {[
+              ['Algebra hint', 'Explain how to solve 2x + 5 = 13 with a hint, then ask me to try the next step.'],
+              ['Biology review', 'Explain photosynthesis for a beginner and give two practice questions to check understanding.'],
+              ['Study plan', 'Help me plan a 30 minute study session for reviewing fractions, with breaks and a short self-check.'],
+            ].map(([label, question]) => <button type="button" key={label} disabled={loading} onClick={() => setInput(question)} className="px-2 py-1 text-xs bg-green-50 text-green-700 rounded">{label}</button>)}
+          </div>
           {/* Input */}
           <div className="p-3 border-t">
             <div className="flex gap-2">
@@ -794,29 +819,28 @@ const Layout = ({ children }) => {
 
 // Login Page
 const LoginPage = () => {
+  const [demoLoginBusy, setDemoLoginBusy] = useState(false);
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, demoLogin } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
-    const result = await login(email, password);
-    setLoading(false);
-    if (result.success) {
-      navigate('/dashboard');
-    } else {
-      setError(result.error || 'Login failed');
+    try {
+      const result = await login(email, password);
+      if (result.success) navigate('/dashboard');
+      else setError(result.error || 'Login failed');
+    } catch (reason) {
+      setError(reason.message || 'Login failed');
+    } finally {
+      setLoading(false);
     }
-  };
-
-  const populateDemo = () => {
-    setEmail(import.meta.env.VITE_DEMO_EMAIL || '');
-    setPassword(import.meta.env.VITE_DEMO_PASSWORD || '');
   };
 
   return (
@@ -858,9 +882,22 @@ const LoginPage = () => {
             {loading ? 'Signing in...' : 'Sign In'}
           </Button>
 
-          <Button type="button" variant="secondary" className="w-full" onClick={populateDemo}>
+          <Button disabled={demoLoginBusy || loading} type="button" variant="secondary" className="w-full" onClick={async () => {
+            if (demoLoginBusy) return;
+            setDemoLoginBusy(true);
+            setError('');
+            try {
+              const result = await demoLogin();
+              if (result.success) navigate('/dashboard');
+              else setError(result.error || 'Demo login is unavailable');
+            } catch (reason) {
+              setError(reason.message || 'Demo login is unavailable');
+            } finally {
+              setDemoLoginBusy(false);
+            }
+          }}>
             <Zap size={18} className="mr-2" />
-            Auto Fill Demo Credentials
+            {demoLoginBusy ? 'Opening Demo...' : 'Log in as Demo'}
           </Button>
         </form>
 
@@ -2391,9 +2428,13 @@ const AIChat = () => {
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {messages.map((msg, idx) => (
                 <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] rounded-2xl px-4 py-2 ${msg.role === 'user' ? 'chat-bubble-user text-white' : 'chat-bubble-assistant'}`}>
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
-                  </div>
+                  {msg.role === 'user' ? (
+                    <div className="max-w-[80%] rounded-2xl px-4 py-2 chat-bubble-user text-white">
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                    </div>
+                  ) : (
+                    <div className="max-w-[92%] w-full"><AIResponseDisplay content={msg.content} title="AI tutor response" /></div>
+                  )}
                 </div>
               ))}
               {sending && (
@@ -2818,6 +2859,8 @@ const Essays = () => {
         <div className="flex flex-wrap gap-2 mb-4">
           <span className="text-sm text-gray-500 self-center">Try sample:</span>
           <button onClick={() => setNewEssay({ title: 'The Impact of Technology on Education', content: 'Technology has fundamentally transformed the landscape of modern education, creating both unprecedented opportunities and significant challenges. In the past two decades, the integration of digital tools into classrooms has shifted from a novelty to a necessity, reshaping how students learn, how teachers instruct, and how educational institutions operate.\n\nOne of the most significant impacts of technology on education is the democratization of access to information. The internet has made vast libraries of knowledge available to anyone with a connection, breaking down geographical and socioeconomic barriers that once limited educational opportunities. Students in rural areas can now access the same resources as those in major cities, and online courses from prestigious universities are available to learners worldwide.\n\nHowever, this technological revolution is not without its drawbacks. The digital divide remains a persistent issue, with many students lacking access to reliable internet or modern devices. Furthermore, the constant presence of technology can be a source of distraction, potentially undermining the deep focus required for meaningful learning. Studies have shown that excessive screen time can affect attention spans and cognitive development, particularly in younger students.\n\nDespite these challenges, the potential of technology to enhance education is immense. Adaptive learning platforms can personalize instruction to meet individual student needs, artificial intelligence can provide immediate feedback on assignments, and virtual reality can create immersive learning experiences that were previously impossible. The key lies in thoughtful implementation that leverages these tools while mitigating their risks.', prompt: 'Discuss the impact of technology on modern education', subject: 'English' })} className="px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100">Sample Essay</button>
+          <button type="button" onClick={() => setNewEssay({ title: 'Public Libraries in the Digital Age', content: 'Public libraries remain essential civic spaces even as information becomes increasingly digital. They provide reliable research support, technology access, educational programs, and quiet places to learn. A strong analysis should compare these benefits with funding constraints and explain how libraries can adapt without excluding patrons who rely on traditional services.', prompt: 'Evaluate how public libraries should adapt to digital learning while preserving equitable access.', subject: 'Social Studies' })} className="px-3 py-1 text-xs bg-purple-50 text-purple-600 rounded-full hover:bg-purple-100">Civic analysis</button>
+          <button type="button" onClick={() => setNewEssay({ title: 'A Garden After the Storm', content: 'By sunrise, the community garden looked unfamiliar. Broken branches covered the paths, rainwater filled the planting beds, and the old wooden sign leaned against the fence. Maya arrived expecting to work alone, but neighbors soon appeared with gloves, tools, and warm drinks. As they rebuilt each row, she began to understand that the garden had always grown more than vegetables.', prompt: 'Write a reflective narrative about a community responding to an unexpected challenge.', subject: 'Creative Writing' })} className="px-3 py-1 text-xs bg-green-50 text-green-600 rounded-full hover:bg-green-100">Reflective narrative</button>
         </div>
         <Input label="Title" value={newEssay.title} onChange={e => setNewEssay({...newEssay, title: e.target.value})} />
         {newEssay.prompt && (
@@ -2926,15 +2969,7 @@ const EssayDetail = () => {
       </Card>
 
       {essay.ai_feedback && (
-        <Card className="p-6" hover={false}>
-          <div className="flex items-center gap-2 mb-4">
-            <Sparkles className="text-purple-600" size={24} />
-            <h2 className="text-lg font-semibold">AI Feedback</h2>
-          </div>
-          <div className="prose max-w-none">
-            <p className="whitespace-pre-wrap text-gray-700">{essay.ai_feedback}</p>
-          </div>
-        </Card>
+        <AIResponseDisplay content={essay.ai_feedback} title="AI feedback" />
       )}
     </div>
   );
@@ -2998,10 +3033,7 @@ const MathSolver = () => {
 
         {solution && (
           <div className="mt-6">
-            <h3 className="font-semibold mb-2">Solution:</h3>
-            <div className={`p-4 rounded-lg ${solution.error ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'}`}>
-              <p className="whitespace-pre-wrap">{solution.solution}</p>
-            </div>
+            <AIResponseDisplay content={solution} title="Step-by-step solution" />
           </div>
         )}
       </Card>
@@ -3087,9 +3119,9 @@ const WritingAssistant = () => {
           <h3 className="font-semibold mb-4">Your Text</h3>
           <div className="flex flex-wrap gap-2 mb-4">
             <span className="text-sm text-gray-500 self-center">Try sample:</span>
-            <button onClick={() => setText('The impact of social media on modern society has been profound and far-reaching. It has changed how we communicate, how we get our news, and even how we think about ourselves. While social media has brung many benefits, such as connecting people across the globe and giving voice to marginalized communities, it also has significant drawbacks. Many studies has shown that excessive social media use can lead to increased anxiety, depression, and feelings of loneliness. Furthermore, the spread of misinformation on these platforms poses a serious threat to democratic institutions.')} className="px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100">Essay Intro</button>
-            <button onClick={() => setText('This paper examines the relationship between sleep patterns and academic performance among college students. Previous research have demonstrated that inadequate sleep negatively affects cognitive function, however the specific mechanisms through which sleep deprivation impacts learning outcomes remains poorly understood. Our methodology involved surverying 500 undergraduate students across three universities, collecting data on there sleep habits, GPA, and self-reported cognitive functioning over a period of one academic semester.')} className="px-3 py-1 text-xs bg-purple-50 text-purple-600 rounded-full hover:bg-purple-100">Research Paper</button>
-            <button onClick={() => setText('The old lighthouse stood at the edge of the cliff, its paint peeling like sunburnt skin. Every evening, the keeper would climb the spiral staircase, his bones creaking in harmony with the ancient steps. He had tended the light for forty years, watching ships pass like ghosts through the fog. Tonight was different though. The sea was angry, waves crashing against the rocks with a furosity he hadnt seen in decades. And somewhere out there, beyond the curtain of rain, a ship was calling for help.')} className="px-3 py-1 text-xs bg-green-50 text-green-600 rounded-full hover:bg-green-100">Creative Writing</button>
+            <button onClick={() => { setType('grammar'); setText('The impact of social media on modern society has been profound and far-reaching. It has changed how we communicate, how we get our news, and even how we think about ourselves. While social media has brung many benefits, such as connecting people across the globe and giving voice to marginalized communities, it also has significant drawbacks. Many studies has shown that excessive social media use can lead to increased anxiety, depression, and feelings of loneliness. Furthermore, the spread of misinformation on these platforms poses a serious threat to democratic institutions.'); }} className="px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100">Essay Intro</button>
+            <button onClick={() => { setType('clarity'); setText('This paper examines the relationship between sleep patterns and academic performance among college students. Previous research have demonstrated that inadequate sleep negatively affects cognitive function, however the specific mechanisms through which sleep deprivation impacts learning outcomes remains poorly understood. Our methodology involved surverying 500 undergraduate students across three universities, collecting data on there sleep habits, GPA, and self-reported cognitive functioning over a period of one academic semester.'); }} className="px-3 py-1 text-xs bg-purple-50 text-purple-600 rounded-full hover:bg-purple-100">Research Paper</button>
+            <button onClick={() => { setType('style'); setText('The old lighthouse stood at the edge of the cliff, its paint peeling like sunburnt skin. Every evening, the keeper would climb the spiral staircase, his bones creaking in harmony with the ancient steps. He had tended the light for forty years, watching ships pass like ghosts through the fog. Tonight was different though. The sea was angry, waves crashing against the rocks with a furosity he hadnt seen in decades. And somewhere out there, beyond the curtain of rain, a ship was calling for help.'); }} className="px-3 py-1 text-xs bg-green-50 text-green-600 rounded-full hover:bg-green-100">Creative Writing</button>
           </div>
           <TextArea
             rows={12}
@@ -3118,9 +3150,7 @@ const WritingAssistant = () => {
         <Card className="p-6" hover={false}>
           <h3 className="font-semibold mb-4">Improved Text</h3>
           {result ? (
-            <div className="bg-gray-50 rounded-lg p-4 min-h-[300px]">
-              <p className="whitespace-pre-wrap">{result.improved}</p>
-            </div>
+            <AIResponseDisplay content={result} title="Improved text" />
           ) : (
             <div className="bg-gray-50 rounded-lg p-4 min-h-[300px] flex items-center justify-center text-gray-400">
               Your improved text will appear here
@@ -3450,55 +3480,10 @@ const Achievements = () => {
   );
 };
 
-// AI Response Display Component
-const AIResponseDisplay = ({ content, title }) => {
-  if (!content) return null;
-
-  // Parse sections from AI response
-  const sections = content.split(/\n\n+/).filter(s => s.trim());
-
-  return (
-    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-100 overflow-hidden">
-      {title && (
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 flex items-center gap-2">
-          <Sparkles className="text-white" size={18} />
-          <h3 className="font-semibold text-white">{title}</h3>
-        </div>
-      )}
-      <div className="p-4 space-y-4">
-        {sections.map((section, idx) => {
-          const isHeader = section.match(/^#+\s/) || section.match(/^\d+\.\s/) || section.match(/^[A-Z][A-Za-z\s]+:$/);
-          const isList = section.includes('\n-') || section.includes('\n•');
-
-          if (isList) {
-            const lines = section.split('\n');
-            return (
-              <div key={idx}>
-                {lines[0] && !lines[0].startsWith('-') && !lines[0].startsWith('•') && (
-                  <p className="font-medium text-gray-800 mb-2">{lines[0]}</p>
-                )}
-                <ul className="space-y-1">
-                  {lines.filter(l => l.startsWith('-') || l.startsWith('•')).map((item, i) => (
-                    <li key={i} className="flex items-start gap-2 text-gray-700">
-                      <span className="text-blue-500 mt-1">•</span>
-                      <span>{item.replace(/^[-•]\s*/, '')}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            );
-          }
-
-          return (
-            <p key={idx} className={`text-gray-700 ${isHeader ? 'font-semibold text-gray-800' : ''}`}>
-              {section.replace(/^#+\s*/, '')}
-            </p>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
+// Shared renderer for live and saved AI responses, including JSON strings.
+const AIResponseDisplay = ({ content, title }) => (
+  <AIReport response={content} title={title || 'AI response'} />
+);
 
 // Editable Row Component
 const EditableRow = ({ item, fields, onEdit, onDelete, onClick }) => {
@@ -4504,9 +4489,13 @@ const StudyScheduler = () => {
 
   const handleOptimize = async () => {
     setOptimizing(true);
+    const pendingSubject = subjectInput.trim();
+    const subjects = pendingSubject && !form.subjects.includes(pendingSubject)
+      ? [...form.subjects, pendingSubject]
+      : form.subjects;
     const result = await apiFetch('/study-schedule/optimize', {
       method: 'POST',
-      body: JSON.stringify(form)
+      body: JSON.stringify({ ...form, subjects })
     });
     setSchedule(result);
     setOptimizing(false);
@@ -4530,9 +4519,9 @@ const StudyScheduler = () => {
         <h3 className="font-semibold mb-4">Create Optimized Schedule</h3>
         <div className="flex flex-wrap gap-2 mb-4">
           <span className="text-sm text-gray-500 self-center">Try sample:</span>
-          <button onClick={() => { const d = new Date(); setForm({ subjects: ['Mathematics', 'Physics', 'Chemistry'], availableHours: 4, goals: 'Prepare for final exams in all three subjects', startDate: d.toISOString().split('T')[0], endDate: new Date(d.getTime() + 14 * 86400000).toISOString().split('T')[0] }); }} className="px-3 py-1 text-xs bg-red-50 text-red-600 rounded-full hover:bg-red-100">Exam Prep</button>
-          <button onClick={() => { const d = new Date(); setForm({ subjects: ['Math', 'English', 'Science', 'History'], availableHours: 3, goals: 'Maintain consistent progress across all subjects', startDate: d.toISOString().split('T')[0], endDate: new Date(d.getTime() + 7 * 86400000).toISOString().split('T')[0] }); }} className="px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100">Balanced Week</button>
-          <button onClick={() => { const d = new Date(); const sat = new Date(d.getTime() + ((6 - d.getDay()) % 7) * 86400000); setForm({ subjects: ['Biology', 'Chemistry'], availableHours: 6, goals: 'Deep dive weekend study session for science subjects', startDate: sat.toISOString().split('T')[0], endDate: new Date(sat.getTime() + 1 * 86400000).toISOString().split('T')[0] }); }} className="px-3 py-1 text-xs bg-green-50 text-green-600 rounded-full hover:bg-green-100">Weekend Focus</button>
+          <button onClick={() => { const d = new Date(); setSubjectInput('Computer Science'); setForm({ subjects: ['Mathematics', 'Physics', 'Chemistry'], availableHours: 4, goals: 'Prepare for final exams in all four subjects', startDate: d.toISOString().split('T')[0], endDate: new Date(d.getTime() + 14 * 86400000).toISOString().split('T')[0] }); }} className="px-3 py-1 text-xs bg-red-50 text-red-600 rounded-full hover:bg-red-100">Exam Prep</button>
+          <button onClick={() => { const d = new Date(); setSubjectInput('Study skills'); setForm({ subjects: ['Math', 'English', 'Science', 'History'], availableHours: 3, goals: 'Maintain consistent progress across all subjects', startDate: d.toISOString().split('T')[0], endDate: new Date(d.getTime() + 7 * 86400000).toISOString().split('T')[0] }); }} className="px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100">Balanced Week</button>
+          <button onClick={() => { const d = new Date(); const sat = new Date(d.getTime() + ((6 - d.getDay()) % 7) * 86400000); setSubjectInput('Lab review'); setForm({ subjects: ['Biology', 'Chemistry'], availableHours: 6, goals: 'Deep dive weekend study session for science subjects', startDate: sat.toISOString().split('T')[0], endDate: new Date(sat.getTime() + 1 * 86400000).toISOString().split('T')[0] }); }} className="px-3 py-1 text-xs bg-green-50 text-green-600 rounded-full hover:bg-green-100">Weekend Focus</button>
         </div>
 
         <div className="mb-4">
@@ -4588,7 +4577,7 @@ const StudyScheduler = () => {
           rows={2}
         />
 
-        <Button onClick={handleOptimize} disabled={optimizing || form.subjects.length === 0}>
+        <Button onClick={handleOptimize} disabled={optimizing || (form.subjects.length === 0 && !subjectInput.trim())}>
           {optimizing ? 'Optimizing...' : 'Generate Schedule'}
         </Button>
       </Card>
@@ -4961,6 +4950,12 @@ const HomeworkHelper = () => {
               <p className="text-sm text-gray-500">{selectedHomework.description}</p>
             </div>
 
+            <div className="flex flex-wrap gap-2 mb-4" aria-label="AI help examples">
+              <span className="text-sm text-gray-500 self-center">Fill every AI field:</span>
+              <button type="button" onClick={() => setHelpQuestion('Explain the first step, identify the concept I should review, and give one hint without completing the assignment for me.')} className="px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100">First-step coach</button>
+              <button type="button" onClick={() => setHelpQuestion('Review my planned approach, point out one likely mistake, and suggest a checklist I can use to verify my own answer.')} className="px-3 py-1 text-xs bg-purple-50 text-purple-600 rounded-full hover:bg-purple-100">Approach review</button>
+              <button type="button" onClick={() => setHelpQuestion('Break this assignment into a 30-minute study plan with milestones, prerequisite concepts, and questions to ask my teacher.')} className="px-3 py-1 text-xs bg-green-50 text-green-600 rounded-full hover:bg-green-100">Study plan</button>
+            </div>
             <TextArea
               label="What do you need help with?"
               placeholder="Ask a specific question about this assignment..."
@@ -5236,9 +5231,9 @@ const HistoryExplorer = () => {
             <h3 className="font-semibold mb-4">Ask About History</h3>
             <div className="flex flex-wrap gap-2 mb-4">
               <span className="text-sm text-gray-500 self-center">Try sample:</span>
-              <button onClick={() => setQuery('What were the main causes and contributing factors that led to this event?')} className="px-3 py-1 text-xs bg-yellow-50 text-yellow-600 rounded-full hover:bg-yellow-100">Causes</button>
-              <button onClick={() => setQuery('What was the long-term impact and lasting legacy of this event on society and culture?')} className="px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100">Impact</button>
-              <button onClick={() => setQuery('How does this event connect to other major historical events of the same era?')} className="px-3 py-1 text-xs bg-green-50 text-green-600 rounded-full hover:bg-green-100">Connections</button>
+              <button onClick={() => { setSelectedEvent(current => current || events[0] || null); setQuery('What were the main causes and contributing factors that led to this event?'); }} className="px-3 py-1 text-xs bg-yellow-50 text-yellow-600 rounded-full hover:bg-yellow-100">Causes</button>
+              <button onClick={() => { setSelectedEvent(current => current || events[0] || null); setQuery('What was the long-term impact and lasting legacy of this event on society and culture?'); }} className="px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100">Impact</button>
+              <button onClick={() => { setSelectedEvent(current => current || events[0] || null); setQuery('How does this event connect to other major historical events of the same era?'); }} className="px-3 py-1 text-xs bg-green-50 text-green-600 rounded-full hover:bg-green-100">Connections</button>
             </div>
             <TextArea
               placeholder={selectedEvent
@@ -5750,6 +5745,12 @@ const HomeworkDetail = () => {
 
       <Card className="p-6 mb-6" hover={false}>
         <h3 className="font-semibold mb-4">Get AI Help</h3>
+        <div className="flex flex-wrap gap-2 mb-4" aria-label="AI help examples">
+          <span className="text-sm text-gray-500 self-center">Fill every AI field:</span>
+          <button type="button" onClick={() => setHelpQuestion('Explain the first step and give one hint without revealing the complete answer.')} className="px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100">First step</button>
+          <button type="button" onClick={() => setHelpQuestion('Check my reasoning approach and give me a short verification checklist.')} className="px-3 py-1 text-xs bg-purple-50 text-purple-600 rounded-full hover:bg-purple-100">Check approach</button>
+          <button type="button" onClick={() => setHelpQuestion('List the prerequisite concepts and divide this assignment into manageable milestones.')} className="px-3 py-1 text-xs bg-green-50 text-green-600 rounded-full hover:bg-green-100">Plan milestones</button>
+        </div>
         <TextArea placeholder="Ask a question about this assignment..." value={helpQuestion} onChange={e => setHelpQuestion(e.target.value)} rows={3} />
         <Button onClick={handleGetHelp} disabled={helping || !helpQuestion} className="mt-2">
           {helping ? 'Getting Help...' : <><Sparkles size={18} className="mr-2" />Get AI Help</>}
@@ -5834,21 +5835,21 @@ function App() {
           <Route path="*" element={<Navigate to="/dashboard" />} />
         
           {/* // === Batch 06 Gaps & Frontend Mounts === */}
-          <Route path="/cf-adaptive-quiz-engine" element={<CFAdaptiveQuizEnginePage />} />
-          <Route path="/cf-parent-insights" element={<CFParentInsightsPage />} />
-          <Route path="/cf-content-recommendation" element={<CFContentRecommendationPage />} />
-          <Route path="/cf-automated-tutoring" element={<CFAutomatedTutoringPage />} />
-          <Route path="/cf-progress-prediction" element={<CFProgressPredictionPage />} />
-          <Route path="/gap-no-teacher" element={<GapNoTeacherPage />} />
-          <Route path="/gap-no-curriculum" element={<GapNoCurriculumPage />} />
-          <Route path="/gap-no-peer" element={<GapNoPeerPage />} />
-          <Route path="/gap-no-dedicated-routes-directory-all-routes-inline" element={<GapNoDedicatedRoutesDirectoryAllRoutesInlinePage />} />
-          <Route path="/gap-limited-frontend-only-3-pages-despite-rich-backend" element={<GapLimitedFrontendOnly3PagesDespiteRichBackendPage />} />
-          <Route path="/gap-no-real-lms-integration-canvas-blackboard-adapter" element={<GapNoRealLmsIntegrationCanvasBlackboardAdapterPage />} />
-          <Route path="/gap-no-payment-billing-for-parent-subscriptions" element={<GapNoPaymentBillingForParentSubscriptionsPage />} />
-          <Route path="/gap-no-webhooks" element={<GapNoWebhooksPage />} />
-          <Route path="/gap-no-audit-logging-visible" element={<GapNoAuditLoggingVisiblePage />} />
-          <Route path="/gap-limited-rbac-student-parent-teacher-separation-unc" element={<GapLimitedRbacStudentParentTeacherSeparationUncPage />} />
+          <Route path="/cf-adaptive-quiz-engine" element={<ProtectedRoute><CFAdaptiveQuizEnginePage /></ProtectedRoute>} />
+          <Route path="/cf-parent-insights" element={<ProtectedRoute><CFParentInsightsPage /></ProtectedRoute>} />
+          <Route path="/cf-content-recommendation" element={<ProtectedRoute><CFContentRecommendationPage /></ProtectedRoute>} />
+          <Route path="/cf-automated-tutoring" element={<ProtectedRoute><CFAutomatedTutoringPage /></ProtectedRoute>} />
+          <Route path="/cf-progress-prediction" element={<ProtectedRoute><CFProgressPredictionPage /></ProtectedRoute>} />
+          <Route path="/gap-no-teacher" element={<ProtectedRoute><GapNoTeacherPage /></ProtectedRoute>} />
+          <Route path="/gap-no-curriculum" element={<ProtectedRoute><GapNoCurriculumPage /></ProtectedRoute>} />
+          <Route path="/gap-no-peer" element={<ProtectedRoute><GapNoPeerPage /></ProtectedRoute>} />
+          <Route path="/gap-no-dedicated-routes-directory-all-routes-inline" element={<ProtectedRoute><GapNoDedicatedRoutesDirectoryAllRoutesInlinePage /></ProtectedRoute>} />
+          <Route path="/gap-limited-frontend-only-3-pages-despite-rich-backend" element={<ProtectedRoute><GapLimitedFrontendOnly3PagesDespiteRichBackendPage /></ProtectedRoute>} />
+          <Route path="/gap-no-real-lms-integration-canvas-blackboard-adapter" element={<ProtectedRoute><GapNoRealLmsIntegrationCanvasBlackboardAdapterPage /></ProtectedRoute>} />
+          <Route path="/gap-no-payment-billing-for-parent-subscriptions" element={<ProtectedRoute><GapNoPaymentBillingForParentSubscriptionsPage /></ProtectedRoute>} />
+          <Route path="/gap-no-webhooks" element={<ProtectedRoute><GapNoWebhooksPage /></ProtectedRoute>} />
+          <Route path="/gap-no-audit-logging-visible" element={<ProtectedRoute><GapNoAuditLoggingVisiblePage /></ProtectedRoute>} />
+          <Route path="/gap-limited-rbac-student-parent-teacher-separation-unc" element={<ProtectedRoute><GapLimitedRbacStudentParentTeacherSeparationUncPage /></ProtectedRoute>} />
           <Route path="/custom-views" element={<ProtectedRoute><CustomViewsPage /></ProtectedRoute>} />
         </Routes>
       </AuthProvider>

@@ -21,6 +21,14 @@ app.get('/api/health',(_req,res)=>res.json({status:'ok',workflow:'approved_learn
 app.use('/api/auth',require('./routes/auth'));
 app.use('/api/ai',require('./routes/runtimeAi'));
 app.use('/api/governance',governanceRouter);
+
+// Advisory AI reports only; native execution and approval routes stay unchanged.
+const aiWorkspaceSupport = require("../aiWorkspaceAdapters.cjs");
+const aiWorkspaceDatabase = require("./config/database.js");
+app.use('/api/report-workspace', require("../aiWorkspace.cjs").createAIWorkspaceRouter({
+  pool: aiWorkspaceDatabase, authenticateToken: require("./middleware/auth.js").authenticateToken,
+  aiRateLimiter: aiWorkspaceSupport.createWorkspaceLimiter(), features: require("../aiWorkspaceFeatures.json"),
+}));
 app.use((_req,res)=>res.status(404).json({error:'ROUTE_NOT_SUPPORTED'}));
 app.use((error,_req,res,_next)=>{console.error('Request failed:',error.message);res.status(500).json({error:'INTERNAL_SERVER_ERROR'});});
 app.listen(port,()=>console.log(`Governed personalized-tutor API listening on ${port}`));

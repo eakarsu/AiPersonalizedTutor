@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import AIReport from '../components/AIReport';
+import FullFieldPresets from '../components/FullFieldPresets';
 
 const API_URL = '/api';
 
@@ -37,6 +39,12 @@ const STYLE_OPTIONS = [
   { v: 'auditory', label: 'Auditory' },
   { v: 'reading_writing', label: 'Reading / Writing' },
   { v: 'kinesthetic', label: 'Kinesthetic' },
+];
+
+const CONTENT_PRESETS = [
+  { label: 'Visual algebra plan', values: { subject: 'Algebra II', topic: 'Quadratic equations and graphing', difficulty: 'intermediate', overrideStyle: 'visual', selectedKinds: ['video', 'article', 'hands_on', 'quiz', 'flashcards', 'interactive'] } },
+  { label: 'Auditory history plan', values: { subject: 'World History', topic: 'Causes and effects of the Industrial Revolution', difficulty: 'advanced', overrideStyle: 'auditory', selectedKinds: ['podcast', 'video', 'article', 'quiz', 'flashcards'] } },
+  { label: 'Hands-on biology plan', values: { subject: 'Biology', topic: 'Cell structure and organelle functions', difficulty: 'beginner', overrideStyle: 'kinesthetic', selectedKinds: ['hands_on', 'interactive', 'video', 'quiz', 'flashcards'] } },
 ];
 
 export default function LearningStyleContentRecommend() {
@@ -86,9 +94,6 @@ export default function LearningStyleContentRecommend() {
     }
   };
 
-  const recommendations = result?.parsed?.recommendations || [];
-  const studyPlan = result?.parsed?.study_plan || [];
-
   return (
     <div>
       <div className="mb-6">
@@ -100,6 +105,20 @@ export default function LearningStyleContentRecommend() {
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
         <form onSubmit={handleSubmit}>
+          <FullFieldPresets
+            value={{ subject, topic, difficulty, overrideStyle, selectedKinds }}
+            presets={CONTENT_PRESETS}
+            disabled={loading}
+            onChange={(values) => {
+              setSubject(values.subject);
+              setTopic(values.topic);
+              setDifficulty(values.difficulty);
+              setOverrideStyle(values.overrideStyle);
+              setSelectedKinds(values.selectedKinds);
+              setResult(null);
+              setError('');
+            }}
+          />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Subject *</label>
@@ -189,80 +208,7 @@ export default function LearningStyleContentRecommend() {
         </div>
       )}
 
-      {result && (
-        <div className="space-y-4">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <p className="text-sm text-gray-500">
-              <strong>Subject:</strong> {result.subject}
-              {result.topic ? <> &nbsp;<strong>Topic:</strong> {result.topic}</> : null}
-              &nbsp;<strong>Style:</strong> {result.dominant_style}
-            </p>
-            {result.parsed?.rationale && (
-              <p className="mt-2"><strong>Why these picks:</strong> {result.parsed.rationale}</p>
-            )}
-          </div>
-
-          {recommendations.length > 0 && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <h3 className="font-semibold mb-3">Recommendations</h3>
-              <div className="space-y-3">
-                {recommendations.map((r, i) => (
-                  <div key={i} className="border border-gray-100 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="px-2 py-0.5 text-xs bg-blue-50 text-blue-700 rounded-full">{r.kind}</span>
-                      {r.difficulty && (
-                        <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-700 rounded-full">{r.difficulty}</span>
-                      )}
-                      {typeof r.estimated_time_minutes === 'number' && (
-                        <span className="text-xs text-gray-500">{r.estimated_time_minutes} min</span>
-                      )}
-                    </div>
-                    <p className="font-medium">{r.title}</p>
-                    {r.why_it_fits_style && (
-                      <p className="text-sm text-gray-600 mt-1">{r.why_it_fits_style}</p>
-                    )}
-                    {r.url_or_search_query && (
-                      <p className="text-sm mt-2">
-                        <strong>Find it:</strong>{' '}
-                        {/^https?:\/\//.test(r.url_or_search_query) ? (
-                          <a className="text-blue-600 hover:underline" href={r.url_or_search_query} target="_blank" rel="noreferrer">
-                            {r.url_or_search_query}
-                          </a>
-                        ) : (
-                          <span className="text-gray-700">{r.url_or_search_query}</span>
-                        )}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {studyPlan.length > 0 && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <h3 className="font-semibold mb-3">Study Plan</h3>
-              <ol className="list-decimal pl-5 space-y-1">
-                {studyPlan.map((s, i) => (
-                  <li key={i}>
-                    {s.action}
-                    {typeof s.duration_minutes === 'number' && (
-                      <span className="text-xs text-gray-500"> &mdash; {s.duration_minutes} min</span>
-                    )}
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
-
-          {!result.parsed && result.raw && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <h3 className="font-semibold mb-2">AI Output</h3>
-              <pre className="whitespace-pre-wrap text-sm">{result.raw}</pre>
-            </div>
-          )}
-        </div>
-      )}
+      {result && <AIReport response={result} title="Learning-style content recommendations" />}
     </div>
   );
 }

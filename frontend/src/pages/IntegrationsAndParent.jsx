@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import AIReport from '../components/AIReport';
+import FullFieldPresets from '../components/FullFieldPresets';
 
 // Apply pass 5 — backlog tools page (parent dashboard, LMS, push, voice, plan).
 
@@ -17,12 +19,19 @@ async function call(path, opts = {}) {
   return { ok: res.ok, status: res.status, body };
 }
 
+const PLAN_PRESETS = [
+  { label: 'Algebra week', values: { subject: 'Algebra: quadratic equations and factoring', goal_minutes_per_day: 30 } },
+  { label: 'Biology week', values: { subject: 'Biology: cell division and genetics review', goal_minutes_per_day: 45 } },
+  { label: 'History week', values: { subject: 'World History: Industrial Revolution essay preparation', goal_minutes_per_day: 60 } },
+];
+
 export default function IntegrationsAndParent() {
   const [tab, setTab] = useState('parent');
   const [studentId, setStudentId] = useState('');
   const [insights, setInsights] = useState(null);
   const [probe, setProbe] = useState(null);
   const [planSubject, setPlanSubject] = useState('algebra');
+  const [planMinutes, setPlanMinutes] = useState(30);
   const [planResult, setPlanResult] = useState(null);
   const [pushPlatform, setPushPlatform] = useState('ios');
   const [pushTokenVal, setPushTokenVal] = useState('');
@@ -44,7 +53,7 @@ export default function IntegrationsAndParent() {
   const probePush = async () => setProbe(await call('/push/notify', { method: 'POST', body: '{}' }));
   const startVoice = async () => setProbe(await call('/ai/voice/session-start', { method: 'POST', body: '{}' }));
   const runPlan = async () => {
-    const r = await call('/ai/study-plan-week', { method: 'POST', body: JSON.stringify({ subject: planSubject, goal_minutes_per_day: 30 }) });
+    const r = await call('/ai/study-plan-week', { method: 'POST', body: JSON.stringify({ subject: planSubject, goal_minutes_per_day: planMinutes }) });
     setPlanResult(r);
   };
 
@@ -105,10 +114,23 @@ export default function IntegrationsAndParent() {
       {tab === 'plan' && (
         <div className="space-y-3">
           <h2 className="font-semibold">Weekly AI study plan (MECHANICAL)</h2>
-          <input className="border p-2 rounded" placeholder="subject"
-            value={planSubject} onChange={(e) => setPlanSubject(e.target.value)} />
-          <button onClick={runPlan} className="bg-blue-600 text-white px-4 py-2 rounded ml-2">Generate plan</button>
-          <pre className="bg-gray-900 text-green-200 p-4 rounded overflow-auto max-h-96">{JSON.stringify(planResult?.body || planResult, null, 2)}</pre>
+          <FullFieldPresets
+            value={{ subject: planSubject, goal_minutes_per_day: planMinutes }}
+            presets={PLAN_PRESETS}
+            onChange={(values) => {
+              setPlanSubject(values.subject);
+              setPlanMinutes(values.goal_minutes_per_day);
+              setPlanResult(null);
+            }}
+          />
+          <div className="flex gap-2 flex-wrap">
+            <input className="border p-2 rounded flex-1" placeholder="subject"
+              value={planSubject} onChange={(e) => setPlanSubject(e.target.value)} />
+            <input className="border p-2 rounded w-48" type="number" min="10" max="240" aria-label="Goal minutes per day"
+              value={planMinutes} onChange={(e) => setPlanMinutes(Number(e.target.value))} />
+            <button onClick={runPlan} className="bg-blue-600 text-white px-4 py-2 rounded">Generate plan</button>
+          </div>
+          <AIReport response={planResult?.body || planResult} title="Weekly AI study plan" />
         </div>
       )}
 

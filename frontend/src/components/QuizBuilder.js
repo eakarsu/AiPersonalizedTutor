@@ -1,9 +1,17 @@
 // NON-VIZ 2 — Quiz Builder
 // Subject + difficulty + count + topics -> POST generates JSON; preview + PDF export.
 import React, { useState } from 'react';
+import AIReport from './AIReport.jsx';
+import FullFieldPresets from './FullFieldPresets.jsx';
 
 const SUBJECTS = ['Math', 'Science', 'English', 'History', 'Art'];
 const DIFFICULTIES = ['easy', 'medium', 'hard'];
+
+const QUIZ_PRESETS = [
+  { label: 'Fractions review', values: { subject: 'Math', difficulty: 'easy', count: 5, topicsText: 'fractions, decimals, equivalent ratios' } },
+  { label: 'Biology assessment', values: { subject: 'Science', difficulty: 'medium', count: 8, topicsText: 'cell structure, mitosis, genetics' } },
+  { label: 'World history challenge', values: { subject: 'History', difficulty: 'hard', count: 10, topicsText: 'Industrial Revolution, imperialism, primary sources' } },
+];
 
 export default function QuizBuilder() {
   const [subject, setSubject] = useState('Math');
@@ -60,6 +68,18 @@ export default function QuizBuilder() {
   return (
     <div style={{ background: '#111827', padding: 16, borderRadius: 8, color: '#e5e7eb' }}>
       <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>Quiz Builder</h2>
+      <FullFieldPresets
+        value={{ subject, difficulty, count, topicsText }}
+        presets={QUIZ_PRESETS}
+        disabled={loading}
+        onChange={(values) => {
+          setSubject(values.subject);
+          setDifficulty(values.difficulty);
+          setCount(values.count);
+          setTopicsText(values.topicsText);
+          setQuiz(null);
+        }}
+      />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 12 }}>
         <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12 }}>
           Subject
@@ -100,23 +120,7 @@ export default function QuizBuilder() {
       {error && <div style={{ marginTop: 12, background: '#7f1d1d', color: '#fecaca', padding: 8, borderRadius: 6 }}>{error}</div>}
       {quiz && (
         <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 13, color: '#9ca3af', marginBottom: 8 }}>
-            {quiz.count} questions · {quiz.subject} · {quiz.difficulty}
-          </div>
-          <ol style={{ paddingLeft: 18 }}>
-            {quiz.questions.map((q) => (
-              <li key={q.id} style={{ marginBottom: 10 }}>
-                <div style={{ fontWeight: 600 }}>{q.text}</div>
-                <ul style={{ listStyle: 'none', padding: 0, marginTop: 4 }}>
-                  {q.choices.map((c, ci) => (
-                    <li key={ci} style={{ color: c === q.answer ? '#34d399' : '#d1d5db', fontSize: 13 }}>
-                      {String.fromCharCode(65 + ci)}) {c}{c === q.answer ? '  (answer)' : ''}
-                    </li>
-                  ))}
-                </ul>
-              </li>
-            ))}
-          </ol>
+          <AIReport response={quiz} title="Generated quiz" />
         </div>
       )}
     </div>
