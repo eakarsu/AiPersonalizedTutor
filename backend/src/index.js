@@ -21,6 +21,7 @@ app.get('/api/health',(_req,res)=>res.json({status:'ok',workflow:'approved_learn
 app.use('/api/auth',require('./routes/auth'));
 app.use('/api/ai',require('./routes/runtimeAi'));
 app.use('/api/governance',governanceRouter);
+app.use('/api/tasks', require('./routes/featurePack').createRouter({authenticate: require('./middleware/auth').authenticateToken}));
 
 // Advisory AI reports only; native execution and approval routes stay unchanged.
 const aiWorkspaceSupport = require("../aiWorkspaceAdapters.cjs");
